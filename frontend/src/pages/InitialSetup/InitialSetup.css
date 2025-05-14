@@ -1,0 +1,74 @@
+.setup-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.setup-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+}
+
+.setup-card h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  text-align: center;
+}
+
+.setup-info {
+  margin-bottom: 1.5rem;
+  color: #555;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.setup-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.setup-button:hover {
+  background-color: #388e3c;
+}
+
+.setup-button:disabled {
+  background-color: #a5d6a7;
+  cursor: not-allowed;
+}
+
+.success-message {
+  background-color: #e8f5e9;
+  border-radius: 4px;
+  padding: 1.5rem;
+  text-align: center;
+  color: #2e7d32;
+}
+
+.success-message h3 {
+  margin-top: 0;
+  color: #2e7d32;
+}
+
+.error-message {
+  background-color: #ffebee;
+  color: #d32f2f;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+} 

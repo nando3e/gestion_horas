@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias de desarrollo
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# No copiar el código, se montará como volumen
+
+# El comando se especifica en docker-compose.dev.yml
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 

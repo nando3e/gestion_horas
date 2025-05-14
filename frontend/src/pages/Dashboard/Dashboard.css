@@ -1,0 +1,137 @@
+.dashboard {
+  padding: 1rem;
+}
+
+.dashboard h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.welcome-message {
+  background-color: #e8f5e9;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-left: 4px solid #4caf50;
+}
+
+.welcome-message h3 {
+  color: #2e7d32;
+  margin: 0 0 0.5rem;
+}
+
+.welcome-message p {
+  color: #388e3c;
+  margin: 0;
+}
+
+.dashboard-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.dashboard-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+}
+
+.dashboard-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.5rem;
+}
+
+.horas-list {
+  margin-bottom: 1.5rem;
+}
+
+.hora-item {
+  padding: 1rem;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.hora-item p {
+  margin: 0.25rem 0;
+}
+
+.card-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.button {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  font-weight: 500;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.button.primary {
+  background-color: #3f51b5;
+  color: white;
+}
+
+.button.primary:hover {
+  background-color: #303f9f;
+}
+
+.button.secondary {
+  background-color: #f5f5f5;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.button.secondary:hover {
+  background-color: #e0e0e0;
+}
+
+.admin-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-links li {
+  margin-bottom: 0.75rem;
+}
+
+.admin-links a {
+  color: #3f51b5;
+  text-decoration: none;
+  display: block;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.admin-links a:hover {
+  background-color: #f5f5f5;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.error-message {
+  background-color: #ffebee;
+  color: #d32f2f;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+} 

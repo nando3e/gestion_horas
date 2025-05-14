@@ -1,0 +1,15 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Instalar dependencias
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# No copiar el código, se montará como volumen
+
+# Exponer puerto para desarrollo
+EXPOSE 3000
+
+# El comando se especifica en docker-compose.dev.yml
+CMD ["npm", "start"] 

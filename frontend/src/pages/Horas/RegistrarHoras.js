@@ -1,0 +1,622 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import horasService from '../../services/horasService';
+import obrasService from '../../services/obrasService';
+import partidasService from '../../services/partidasService';
+import trabajadoresService from '../../services/trabajadoresService';
+import authService from '../../services/authService';
+import {
+  Box, Paper, Typography, TextField, Select, MenuItem, Button, FormControl, InputLabel, FormControlLabel, Switch, Radio, RadioGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Alert
+} from '@mui/material';
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '15', '30', '45'];
+
+const RegistrarHoras = () => {
+  // Estados principales
+  const [usuario, setUsuario] = useState(null);
+  const [trabajadores, setTrabajadores] = useState([]);
+  const [obras, setObras] = useState([]);
+  const [partidas, setPartidas] = useState([]);
+  const [registrosDia, setRegistrosDia] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Estados del formulario
+  const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState('');
+  const [obraSeleccionada, setObraSeleccionada] = useState('');
+  const [partidaSeleccionada, setPartidaSeleccionada] = useState('');
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tramos, setTramos] = useState([
+    { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }
+  ]);
+  const [esRegularizacion, setEsRegularizacion] = useState(false);
+  const [horasRegularizacion, setHorasRegularizacion] = useState('');
+  const [esExtra, setEsExtra] = useState(false);
+  const [tipoExtra, setTipoExtra] = useState('interno');
+  const [descripcionExtra, setDescripcionExtra] = useState('');
+
+  // Edición/eliminación
+  const [editandoId, setEditandoId] = useState(null);
+  const [formError, setFormError] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  // --- Definición de cargarRegistros con useCallback ---
+  const cargarRegistros = useCallback(async () => {
+    if (!usuario || !fecha) {
+      setRegistrosDia([]);
+      return;
+    }
+    try {
+      let queryParams = { fecha };
+      if (usuario.rol === 'trabajador') {
+        queryParams.chat_id = usuario.chat_id; // USAR chat_id
+      } else if (usuario.rol === 'admin' || usuario.rol === 'secretaria') {
+        if (trabajadorSeleccionado) {
+          queryParams.chat_id = trabajadorSeleccionado; // Aquí trabajadorSeleccionado ya es el chat_id del dropdown
+        } else {
+          // Si es admin/secretaria y no hay trabajador seleccionado, no cargar nada o cargar todos (según lógica de negocio)
+          setRegistrosDia([]); 
+          return;
+        }
+      } else {
+        setRegistrosDia([]); // Rol desconocido o no manejado
+        return;
+      }
+      
+      console.log('[RegistrarHoras - cargarRegistros] Cargando registros con params:', queryParams);
+      
+      const regs = await horasService.getHoras(queryParams);
+      
+      // Solo mostrar los registros de la fecha seleccionada (en caso de que la API devuelva registros de más días)
+      const registrosFecha = regs.filter(reg => reg.fecha && reg.fecha.substring(0, 10) === fecha);
+      console.log('[RegistrarHoras - cargarRegistros] Registros filtrados por fecha:', registrosFecha.length);
+      
+      setRegistrosDia(registrosFecha);
+    } catch (err) {
+      setError(`Error al cargar registros del día: ${err.message || 'Error desconocido'}`);
+      console.error("Error en cargarRegistros: ", err);
+      setRegistrosDia([]);
+    }
+  }, [usuario, trabajadorSeleccionado, fecha]); // Dependencias de cargarRegistros
+
+  // Cargar datos iniciales
+  const cargarDatosIniciales = useCallback(async () => {
+    const user = authService.getCurrentUser();
+    setUsuario(user);
+    console.log('[RegistrarHoras - cargarDatosIniciales] Usuario actual:', user); // Log de diagnóstico
+
+    if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
+      try {
+        const trabajadoresData = await trabajadoresService.getTrabajadores();
+        setTrabajadores(trabajadoresData);
+      } catch (error) {
+        console.error("Error al cargar trabajadores:", error);
+        setFormError("Error al cargar la lista de trabajadores.");
+      }
+    }
+
+    if (user && user.rol === 'trabajador') {
+      console.log('[RegistrarHoras - cargarDatosIniciales] Estableciendo trabajadorSeleccionado para rol trabajador con user.chat_id:', user.chat_id);
+      
+      // Si el usuario es trabajador pero no tiene chat_id, hay que buscarlo en la BD
+      if (!user.chat_id) {
+        console.log('[RegistrarHoras - cargarDatosIniciales] ⚠️ El usuario trabajador no tiene chat_id en localStorage. Intentando recuperarlo...');
+        
+        try {
+          // Intentamos obtener los datos del usuario actual del backend
+          const userInfo = await horasService.getUserInfo(); // Supuesto nuevo endpoint para obtener info del usuario
+          if (userInfo && userInfo.chat_id) {
+            console.log('[RegistrarHoras - cargarDatosIniciales] ✅ Recuperado chat_id del backend:', userInfo.chat_id);
+            setTrabajadorSeleccionado(userInfo.chat_id);
+            
+            // Actualizar el localStorage con el chat_id
+            const updatedUser = { ...user, chat_id: userInfo.chat_id };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            setUsuario(updatedUser);
+          } else {
+            console.error('[RegistrarHoras - cargarDatosIniciales] ❌ No se pudo recuperar el chat_id del backend');
+            setFormError("No se pudo identificar al trabajador. Por favor, recarga la página o contacta con el administrador.");
+          }
+        } catch (error) {
+          console.error('[RegistrarHoras - cargarDatosIniciales] Error al intentar recuperar chat_id:', error);
+          setFormError("Error al intentar identificar al trabajador. Por favor, recarga la página.");
+        }
+      } else {
+        // Si el chat_id está presente, simplemente lo usamos
+        setTrabajadorSeleccionado(user.chat_id);
+      }
+    }
+
+    try {
+      const obrasData = await obrasService.getObras();
+      setObras(obrasData);
+    } catch (error) {
+      console.error("Error al cargar obras:", error);
+      setFormError("Error al cargar la lista de obras.");
+    }
+
+    // Registros del día
+    let registros;
+    if (user && user.rol === 'trabajador') {
+      registros = await horasService.getHorasHoy(); // Asumimos que getHorasHoy usa el token y el backend identifica al user
+    } else {
+      if (trabajadorSeleccionado) {
+        registros = await horasService.getHoras({ chat_id: trabajadorSeleccionado }); // trabajadorSeleccionado es el chat_id
+      } else {
+        registros = [];
+      }
+    }
+    setRegistrosDia(registros);
+  }, [trabajadorSeleccionado]);
+
+  useEffect(() => {
+    const cargarDatos = async () => {
+      setLoading(true);
+      try {
+        await cargarDatosIniciales();
+      } catch (err) {
+        setError('Error al cargar datos iniciales');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    cargarDatos();
+    // eslint-disable-next-line
+  }, []);
+
+  // Cargar partidas cuando cambia la obra seleccionada
+  useEffect(() => {
+    const cargarPartidas = async () => {
+      if (obraSeleccionada) {
+        try {
+          const partidasData = await partidasService.getPartidasPorObra(obraSeleccionada);
+          // Filtrar solo las no acabadas y de la obra seleccionada
+          setPartidas(partidasData.filter(p => p.id_obra === parseInt(obraSeleccionada) && !p.acabada));
+        } catch (err) {
+          setPartidas([]);
+        }
+      } else {
+        setPartidas([]);
+      }
+    };
+    cargarPartidas();
+  }, [obraSeleccionada]);
+
+  // Cargar registros del día cuando cambia el trabajador seleccionado o la fecha
+  useEffect(() => {
+    // Ahora simplemente llamamos a la función cargarRegistros definida con useCallback
+    cargarRegistros();
+  }, [cargarRegistros]); // La dependencia es la propia función cargarRegistros
+
+  // --- Lógica para añadir/editar registro de horas ---
+  const handleAddRegistro = async () => {
+    setAdding(true);
+    setFormError('');
+    console.log('[RegistrarHoras - handleAddRegistro] Estado antes de validación - Usuario:', usuario, 'Trabajador Seleccionado:', trabajadorSeleccionado); // <--- NUEVO LOG
+
+    // Validar que la fecha esté seleccionada
+    if (!fecha) {
+      setFormError('Por favor, selecciona una fecha.');
+      setAdding(false);
+      return;
+    }
+
+    // Validar que trabajadorSeleccionado tenga un valor si el rol es admin/secretaria
+    if (usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && !trabajadorSeleccionado) {
+      setFormError('Por favor, selecciona un trabajador.');
+      setAdding(false);
+      return;
+    }
+    // Validar que trabajadorSeleccionado (que es el user.chat_id para el trabajador) tiene valor
+    if (usuario && usuario.rol === 'trabajador' && !trabajadorSeleccionado) {
+        setFormError('No se pudo identificar al trabajador. Por favor, recarga la página.');
+        setAdding(false);
+        return;
+    }
+
+    if (!obraSeleccionada || !partidaSeleccionada || (esRegularizacion ? !horasRegularizacion : tramos.some(t => !t.horaInicio || !t.minutoInicio || !t.horaFin || !t.minutoFin))) {
+      setFormError('Por favor, completa todos los campos obligatorios del formulario y al menos un tramo horario.');
+      setAdding(false);
+      return;
+    }
+
+    const totalHorasCalculado = esRegularizacion ? parseFloat(horasRegularizacion) : calcularTotalHoras();
+    if (totalHorasCalculado <= 0) {
+        setFormError('El total de horas debe ser mayor que cero.');
+        setAdding(false);
+        return;
+    }
+
+    // Construir los datos del registro
+    // El backend espera un solo string para horario, ej: "08:00-12:00,13:00-17:00"
+    const horarioString = esRegularizacion ? null : tramos.map(t => `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`).join(',');
+
+    const registroData = {
+      chat_id: (usuario && usuario.rol === 'trabajador') ? usuario.chat_id : trabajadorSeleccionado, // USAR usuario.chat_id o el trabajadorSeleccionado (que es un chat_id)
+      nombre_trabajador: '', // El backend lo obtiene a partir del chat_id
+      fecha: fecha,
+      id_obra: parseInt(obraSeleccionada),
+      id_partida: parseInt(partidaSeleccionada),
+      horario: horarioString,
+      horas_totales: totalHorasCalculado,
+      es_extra: esExtra,
+      tipo_extra: esExtra ? tipoExtra : null,
+      descripcion_extra: esExtra ? descripcionExtra : null,
+      es_regularizacion: esRegularizacion,
+    };
+
+    try {
+      await horasService.createHora(registroData);
+      setFormError(''); // Limpiar error si la creación fue exitosa
+      // Resetear formulario y recargar registros
+      setObraSeleccionada('');
+      setPartidaSeleccionada('');
+      // setFecha(new Date().toISOString().slice(0, 10)); // Opcional: resetear fecha o mantenerla
+      setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+      setEsRegularizacion(false);
+      setHorasRegularizacion('');
+      setEsExtra(false);
+      setTipoExtra('interno');
+      setDescripcionExtra('');
+      await cargarRegistros(); // Llamada para refrescar la lista
+    } catch (err) {
+      console.error("Error in handleAddRegistro:", err);
+      let errorMessage = 'Error al guardar el registro.';
+      if (err.response && err.response.data && err.response.data.detail) {
+        if (Array.isArray(err.response.data.detail)) {
+          errorMessage = err.response.data.detail.map(e => {
+            const loc = e.loc && e.loc.length > 1 ? e.loc[1] : (e.loc ? e.loc[0] : 'Error');
+            return `${loc} - ${e.msg}`;
+          }).join('; ');
+        } else if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail;
+        }
+      }
+      setFormError(errorMessage);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  // Editar registro
+  const handleEditar = (registro) => {
+    setEditandoId(registro.id_movimiento);
+    // Asegurarse de que trabajadorSeleccionado se establece si es admin/secretaria editando
+    if (usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria')) {
+      setTrabajadorSeleccionado(registro.chat_id); // USAR registro.chat_id
+    }
+    setObraSeleccionada(registro.id_obra.toString()); 
+    setPartidaSeleccionada(registro.id_partida.toString());
+    setFecha(registro.fecha.substring(0,10)); // Asegurar formato YYYY-MM-DD
+
+    setEsRegularizacion(!!registro.es_regularizacion); // Convertir a booleano
+
+    if (registro.es_regularizacion) {
+      setHorasRegularizacion(registro.horas_totales.toString());
+      setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]); // Reset tramos
+    } else {
+      const horarios = registro.horario ? registro.horario.split(',') : [];
+      if (horarios.length > 0 && horarios[0]) { // Comprobar que hay horario y no es vacío
+        const newTramos = horarios.map(horario => {
+          const [ini, fin] = horario.split('-');
+          const [hIni, mIni] = ini.split(':');
+          const [hFin, mFin] = fin.split(':');
+          return { horaInicio: hIni, minutoInicio: mIni, horaFin: hFin, minutoFin: mFin };
+        });
+        setTramos(newTramos);
+      } else {
+        // Si no hay horario (puede ser un registro antiguo o incorrecto), resetear a un tramo por defecto
+        setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+      }
+      setHorasRegularizacion(''); // Limpiar horas de regularización
+    }
+
+    setEsExtra(!!registro.es_extra); // Convertir a booleano
+    setTipoExtra(registro.tipo_extra || 'interno');
+    setDescripcionExtra(registro.descripcion_extra || '');
+    setFormError('');
+  };
+
+  // Cancelar edición
+  const handleCancelarEdicion = () => {
+    setEditandoId(null);
+    setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+    setEsRegularizacion(false);
+    setHorasRegularizacion('');
+    setEsExtra(false); setTipoExtra('interno'); setDescripcionExtra('');
+    setPartidaSeleccionada('');
+    setFormError('');
+  };
+
+  // Eliminar registro
+  const handleEliminar = async (id) => {
+    if (!window.confirm('¿Seguro que quieres eliminar este registro?')) return;
+    try {
+      await horasService.deleteHora(id);
+      await cargarRegistros(); // Llamada para refrescar la lista
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al eliminar el registro');
+    }
+  };
+
+  // --- NUEVO: Funciones para gestionar tramos ---
+  const handleTramoChange = (index, field, value) => {
+    setTramos(prev => prev.map((tramo, i) => i === index ? { ...tramo, [field]: value } : tramo));
+  };
+  const handleAddTramo = () => {
+    setTramos(prev => ([...prev, { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]));
+  };
+  const handleRemoveTramo = (index) => {
+    if (tramos.length === 1) return; // No permitir menos de un tramo
+    setTramos(prev => prev.filter((_, i) => i !== index));
+  };
+  // --- Calcular total de horas de todos los tramos ---
+  const calcularTotalHoras = () => {
+    let total = 0;
+    for (const tramo of tramos) {
+      const hIni = parseInt(tramo.horaInicio);
+      const mIni = parseInt(tramo.minutoInicio);
+      const hFin = parseInt(tramo.horaFin);
+      const mFin = parseInt(tramo.minutoFin);
+      let horas = (hFin + mFin / 60) - (hIni + mIni / 60);
+      if (horas < 0) horas += 24;
+      total += horas;
+    }
+    return total;
+  };
+
+  return (
+    <Box maxWidth="700px" mx="auto" py={4}>
+      <Typography variant="h4" mb={3} fontWeight={700}>Registrar Horas</Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Paper sx={{ p: 3, mb: 4 }} elevation={2}>
+        <form onSubmit={(e) => { e.preventDefault(); handleAddRegistro(); }}>
+          <Box display="flex" flexDirection="column" gap={2}>
+            {/* Trabajador (solo admin/secretaria) */}
+            {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
+              <FormControl fullWidth required>
+                <InputLabel>Trabajador</InputLabel>
+                <Select
+                  value={trabajadorSeleccionado}
+                  label="Trabajador"
+                  onChange={e => setTrabajadorSeleccionado(e.target.value)}
+                >
+                  <MenuItem value="">Selecciona un trabajador</MenuItem>
+                  {trabajadores.map(t => (
+                    <MenuItem key={t.chat_id} value={t.chat_id}>{t.nombre}</MenuItem> // USAR t.chat_id para key y value
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            {/* Obra */}
+            <FormControl fullWidth required>
+              <InputLabel>Obra</InputLabel>
+              <Select
+                value={obraSeleccionada}
+                label="Obra"
+                onChange={e => setObraSeleccionada(e.target.value)}
+              >
+                <MenuItem value="">Selecciona una obra</MenuItem>
+                {obras.map(o => (
+                  <MenuItem key={o.id_obra} value={o.id_obra}>{o.nombre_obra}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {/* Partida */}
+            <FormControl fullWidth required>
+              <InputLabel>Partida</InputLabel>
+              <Select
+                value={partidaSeleccionada}
+                label="Partida"
+                onChange={e => setPartidaSeleccionada(e.target.value)}
+              >
+                <MenuItem value="">Selecciona una partida</MenuItem>
+                {partidas.map(p => (
+                  <MenuItem key={p.id_partida} value={p.id_partida}>{p.nombre_partida}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {/* Fecha */}
+            <TextField
+              label="Fecha"
+              type="date"
+              value={fecha}
+              onChange={e => setFecha(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              required
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+
+            {/* --- Switch para Es Regularización --- */}
+            {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={esRegularizacion}
+                    onChange={(e) => {
+                      setEsRegularizacion(e.target.checked);
+                      if (e.target.checked) {
+                        // Opcional: Limpiar tramos si se activa regularización
+                        // setTramos([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '' }]); 
+                      } else {
+                        // Opcional: Limpiar horas de regularización si se desactiva
+                         setHorasRegularizacion(''); 
+                      }
+                    }}
+                    name="esRegularizacion"
+                    color="primary"
+                  />
+                }
+                label="¿Es Regularización?"
+                sx={{ mb: 2, display: 'block' }} 
+              />
+            )}
+
+            {/* --- Sección de Tramos Horarios --- */}
+            {esRegularizacion ? (
+              <TextField
+                label="Horas de regularización"
+                type="number"
+                value={horasRegularizacion}
+                onChange={e => setHorasRegularizacion(e.target.value)}
+                required
+                fullWidth
+                sx={{ mb: 2 }}
+              />
+            ) : (
+              <Box>
+                <Typography variant="subtitle1" gutterBottom>Tramos horarios</Typography>
+                {tramos.map((tramo, idx) => (
+                  <Box key={idx} display="flex" gap={1} alignItems="center" mb={1}>
+                    <FormControl required>
+                      <InputLabel>Hora inicio</InputLabel>
+                      <Select
+                        value={tramo.horaInicio}
+                        label="Hora inicio"
+                        onChange={e => handleTramoChange(idx, 'horaInicio', e.target.value)}
+                      >
+                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <FormControl required>
+                      <InputLabel>Minuto inicio</InputLabel>
+                      <Select
+                        value={tramo.minutoInicio}
+                        label="Minuto inicio"
+                        onChange={e => handleTramoChange(idx, 'minutoInicio', e.target.value)}
+                      >
+                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <Typography>-</Typography>
+                    <FormControl required>
+                      <InputLabel>Hora fin</InputLabel>
+                      <Select
+                        value={tramo.horaFin}
+                        label="Hora fin"
+                        onChange={e => handleTramoChange(idx, 'horaFin', e.target.value)}
+                      >
+                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <FormControl required>
+                      <InputLabel>Minuto fin</InputLabel>
+                      <Select
+                        value={tramo.minutoFin}
+                        label="Minuto fin"
+                        onChange={e => handleTramoChange(idx, 'minutoFin', e.target.value)}
+                      >
+                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      onClick={() => handleRemoveTramo(idx)}
+                      disabled={tramos.length === 1}
+                      sx={{ minWidth: 0, px: 1 }}
+                    >
+                      X
+                    </Button>
+                  </Box>
+                ))}
+                <Button variant="outlined" size="small" onClick={handleAddTramo} sx={{ mt: 1 }}>Añadir tramo</Button>
+                <Typography mt={2} fontWeight={600}>Total de horas: {calcularTotalHoras().toFixed(2)}</Typography>
+              </Box>
+            )}
+            {/* Extra */}
+            <FormControlLabel
+              control={<Switch checked={esExtra} onChange={e => setEsExtra(e.target.checked)} color="primary" />}
+              label="¿Es extra?"
+            />
+            {esExtra && (
+              <Box>
+                <RadioGroup row value={tipoExtra} onChange={e => setTipoExtra(e.target.value)}>
+                  <FormControlLabel value="interno" control={<Radio />} label="Interno" />
+                  <FormControlLabel value="externo" control={<Radio />} label="Externo" />
+                </RadioGroup>
+                <TextField
+                  label="Descripción del extra"
+                  value={descripcionExtra}
+                  onChange={e => setDescripcionExtra(e.target.value)}
+                  required={esExtra}
+                  fullWidth
+                  sx={{ mt: 1 }}
+                />
+              </Box>
+            )}
+            {formError && <Alert severity="error">{formError}</Alert>}
+            <Box display="flex" gap={2}>
+              <Button type="submit" variant="contained" color="primary" disabled={adding}>
+                {adding ? 'Añadiendo...' : 'Añadir registro'}
+              </Button>
+            </Box>
+          </Box>
+        </form>
+      </Paper>
+      {/* Tabla de registros del día */}
+      <Typography variant="h6" mb={2}>
+        {fecha ? (() => {
+          // Convertir string de fecha a objeto Date
+          const fechaObj = new Date(fecha);
+          // Días de la semana en español
+          const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+          // Formatear fecha como dd/mm/aaaa
+          const dia = fechaObj.getDate().toString().padStart(2, '0');
+          const mes = (fechaObj.getMonth() + 1).toString().padStart(2, '0');
+          const año = fechaObj.getFullYear();
+          
+          return `Registros del día ${diasSemana[fechaObj.getDay()]}, ${dia}/${mes}/${año}`;
+        })() : 'Registros del día'}
+      </Typography>
+      {loading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+          <CircularProgress />
+        </Box>
+      ) : registrosDia.length === 0 ? (
+        <Alert severity="info">No hay registros para este día.</Alert>
+      ) : (
+        <TableContainer component={Paper} elevation={1} sx={{ mb: 4 }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Obra</TableCell>
+                <TableCell>Partida</TableCell>
+                <TableCell>Fecha</TableCell>
+                <TableCell>Horario</TableCell>
+                <TableCell>Horas</TableCell>
+                <TableCell>¿Extra?</TableCell>
+                <TableCell>Tipo extra</TableCell>
+                <TableCell>Descripción extra</TableCell>
+                <TableCell>Acciones</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {registrosDia.map(reg => (
+                <TableRow key={reg.id_movimiento}>
+                  <TableCell>{obras.find(o => o.id_obra === reg.id_obra)?.nombre_obra || reg.id_obra}</TableCell>
+                  <TableCell>{reg.nombre_partida || 'No especificada'}</TableCell>
+                  <TableCell>{reg.fecha}</TableCell>
+                  <TableCell>{reg.horario}</TableCell>
+                  <TableCell>{reg.horas_totales}</TableCell>
+                  <TableCell>{reg.es_extra ? 'Sí' : 'No'}</TableCell>
+                  <TableCell>{reg.tipo_extra || '-'}</TableCell>
+                  <TableCell>{reg.descripcion_extra || '-'}</TableCell>
+                  <TableCell>
+                    <Button size="small" variant="outlined" onClick={() => handleEditar(reg)} sx={{ mr: 1 }}>Editar</Button>
+                    <Button size="small" variant="outlined" color="error" onClick={() => handleEliminar(reg.id_movimiento)}>Eliminar</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
+};
+
+export default RegistrarHoras; 
