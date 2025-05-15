@@ -15,7 +15,7 @@ from app.models.usuarios import Usuario
 
 router = APIRouter()
 
-@router.get("/", response_model=List[ObraSchema])
+@router.get("", response_model=List[ObraSchema])
 async def read_obras(
     skip: int = 0,
     limit: int = 100,
@@ -70,7 +70,7 @@ async def read_obra(
         )
     return obra
 
-@router.post("/", response_model=ObraSchema)
+@router.post("", response_model=ObraSchema)
 async def create_obra(
     obra: ObraCreate,
     db: Session = Depends(get_db),

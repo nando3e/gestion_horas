@@ -647,7 +647,7 @@ const ListaHoras = () => {
                           )}
                           <TableCell>{obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || 'N/A'}</TableCell>
                           <TableCell>{hora.nombre_partida || 'N/A'}</TableCell>
-                          <TableCell>{hora.horas_totales}</TableCell>
+                          <TableCell>{typeof hora.horas_totales === 'number' ? hora.horas_totales.toFixed(2) : parseFloat(hora.horas_totales || 0).toFixed(2)}</TableCell>
                           <TableCell>
                             {hora.es_extra ? (
                               <Chip 

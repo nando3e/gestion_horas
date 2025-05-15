@@ -18,7 +18,7 @@ from app.core.auth import get_password_hash
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Gestión de Horas API")
+app = FastAPI(title="Gestión de Horas API", redirect_slashes=False)
 
 # Configurar CORS
 app.add_middleware(

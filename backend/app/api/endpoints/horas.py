@@ -21,7 +21,7 @@ from app.models.trabajadores import Trabajador
 
 router = APIRouter()
 
-@router.get("/", response_model=List[HoraSchema])
+@router.get("", response_model=List[HoraSchema])
 async def read_horas(
     skip: int = 0,
     limit: int = 100,
@@ -209,7 +209,7 @@ async def read_hora(
     
     return hora
 
-@router.post("/", response_model=HoraSchema)
+@router.post("", response_model=HoraSchema)
 async def create_hora(
     hora: HoraCreate,
     db: Session = Depends(get_db),
@@ -402,11 +402,12 @@ async def update_hora(
         fecha_str = fecha_a_verificar.isoformat() if isinstance(fecha_a_verificar, date) else fecha_a_verificar
         
         try:
-            horario_inicio, horario_fin = horario_a_verificar.split("-")
+            primer_tramo_a_verificar = horario_a_verificar.split(',')[0]
+            horario_inicio, horario_fin = primer_tramo_a_verificar.split("-")
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Formato de horario '{horario_a_verificar}' inválido. Use HH:MM-HH:MM."
+                detail=f"Formato de horario '{primer_tramo_a_verificar}' inválido. Use HH:MM-HH:MM."
             )
         
         print(f"DEBUG: Verificando solapamiento para actualización - trabajador: {db_hora.chat_id}, fecha: {fecha_str}")
