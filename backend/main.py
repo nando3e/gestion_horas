@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from sqlalchemy.orm import Session
 import os
@@ -97,61 +97,9 @@ static_directory = Path("/app/static")
 if static_directory.exists():
     logger.info(f"Directorio estático encontrado en {static_directory}")
     
-    # Servir index.html en la ruta raíz
-    @app.get("/")
-    async def root():
-        return FileResponse(static_directory / "index.html")
+    # Montar los archivos estáticos directamente
+    app.mount("/", StaticFiles(directory="/app/static", html=True), name="static")
     
-    # Servir archivos estáticos específicos
-    @app.get("/static/{file_path:path}")
-    async def serve_static_with_path(file_path: str):
-        full_path = static_directory / file_path
-        if full_path.exists() and full_path.is_file():
-            return FileResponse(full_path)
-        return {"detail": "File not found"}
-    
-    # Servir archivos CSS directamente desde la raíz
-    @app.get("/css/{file_path:path}")
-    async def serve_css(file_path: str):
-        full_path = static_directory / "static" / "css" / file_path
-        if full_path.exists() and full_path.is_file():
-            return FileResponse(full_path)
-        return {"detail": "CSS file not found"}
-    
-    # Servir archivos JS directamente desde la raíz
-    @app.get("/js/{file_path:path}")
-    async def serve_js(file_path: str):
-        full_path = static_directory / "static" / "js" / file_path
-        if full_path.exists() and full_path.is_file():
-            return FileResponse(full_path)
-        return {"detail": "JS file not found"}
-    
-    # Servir archivos de media directamente desde la raíz
-    @app.get("/media/{file_path:path}")
-    async def serve_media(file_path: str):
-        full_path = static_directory / "static" / "media" / file_path
-        if full_path.exists() and full_path.is_file():
-            return FileResponse(full_path)
-        return {"detail": "Media file not found"}
-    
-    # Servir manifest.json y favicon
-    @app.get("/manifest.json")
-    async def serve_manifest():
-        return FileResponse(static_directory / "manifest.json")
-    
-    @app.get("/favicon.ico")
-    async def serve_favicon():
-        return FileResponse(static_directory / "favicon.ico")
-    
-    # Cualquier otra ruta no manejada, enviar a index.html para SPA routing
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        # Si la ruta comienza con api/, no manejarla aquí
-        if full_path.startswith("api/"):
-            return {"detail": "Not Found"}
-        
-        # Para todas las demás rutas, servir el index.html para que el frontend maneje el enrutamiento
-        return FileResponse(static_directory / "index.html")
 else:
     logger.warning(f"Directorio de archivos estáticos no encontrado: {static_directory}")
     

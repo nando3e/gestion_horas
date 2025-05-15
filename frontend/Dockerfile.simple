@@ -1,0 +1,33 @@
+# Etapa de construcción
+FROM node:18-alpine as build
+
+WORKDIR /app
+
+# Instalar dependencias
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copiar el resto de los archivos y construir
+COPY . .
+RUN npm run build
+
+# Etapa final - imagen mínima con solo los archivos estáticos
+FROM alpine:latest
+
+# Instalar un servidor web simple
+RUN apk add --no-cache lighttpd
+
+# Copiar los archivos construidos
+COPY --from=build /app/build /var/www/localhost/htdocs
+
+# Configurar lighttpd para SPA
+RUN echo 'server.document-root = "/var/www/localhost/htdocs"' > /etc/lighttpd/lighttpd.conf && \
+    echo 'server.port = 80' >> /etc/lighttpd/lighttpd.conf && \
+    echo 'mimetype.assign = (".html" => "text/html", ".js" => "application/javascript", ".css" => "text/css", ".png" => "image/png", ".jpg" => "image/jpeg", ".svg" => "image/svg+xml", ".ico" => "image/x-icon")' >> /etc/lighttpd/lighttpd.conf && \
+    echo 'server.error-handler-404 = "/index.html"' >> /etc/lighttpd/lighttpd.conf
+
+# Exponer puerto
+EXPOSE 80
+
+# Comando para iniciar el servidor
+CMD ["lighttpd", "-D", "-f", "/etc/lighttpd/lighttpd.conf"] 

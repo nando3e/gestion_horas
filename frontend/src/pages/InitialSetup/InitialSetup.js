@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../services/api';
 import './InitialSetup.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const InitialSetup = () => {
   const [formData, setFormData] = useState({
@@ -40,13 +38,13 @@ const InitialSetup = () => {
 
     try {
       // Intentar crear un trabajador primero
-      await axios.post(`${API_URL}/trabajadores`, {
+      await api.post('/trabajadores', {
         chat_id: formData.chat_id,
         nombre: formData.nombre
       });
 
       // Luego crear el usuario admin
-      await axios.post(`${API_URL}/auth/register`, {
+      await api.post('/auth/register', {
         username: formData.username,
         password: formData.password,
         chat_id: formData.chat_id,

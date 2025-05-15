@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import axios from 'axios';
+import api from '../../services/api';
 import { 
   Box, 
   Container, 
@@ -15,8 +15,6 @@ import {
   IconButton
 } from '@mui/material';
 import { FaUserAlt, FaLock, FaEye, FaEyeSlash, FaTools } from 'react-icons/fa';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const Login = () => {
   const [credentials, setCredentials] = useState({
@@ -36,12 +34,12 @@ const Login = () => {
     const checkIfSetupNeeded = async () => {
       try {
         // Intentamos hacer un ping simple al API
-        await axios.get(`${API_URL}/health`);
+        await api.get('/health');
         
         // Ahora verificamos si hay al menos un usuario
         try {
           // Esta petición podría fallar si no hay usuarios, eso es normal
-          await axios.post(`${API_URL}/auth/login/json`, {
+          await api.post('/auth/login/json', {
             username: '_check_setup_',
             password: '_check_setup_'
           });
