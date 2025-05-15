@@ -8,8 +8,8 @@ const trabajadoresService = {
   },
   
   // Obtener un trabajador específico
-  getTrabajador: async (id) => {
-    const response = await api.get(`/trabajadores/${id}`);
+  getTrabajador: async (chat_id) => {
+    const response = await api.get(`/trabajadores/${chat_id}`);
     return response.data;
   },
   
@@ -20,14 +20,14 @@ const trabajadoresService = {
   },
   
   // Actualizar un trabajador
-  updateTrabajador: async (id, trabajadorData) => {
-    const response = await api.put(`/trabajadores/${id}`, trabajadorData);
+  updateTrabajador: async (chat_id, trabajadorData) => {
+    const response = await api.put(`/trabajadores/${chat_id}`, trabajadorData);
     return response.data;
   },
   
   // Eliminar un trabajador
-  deleteTrabajador: async (id) => {
-    return await api.delete(`/trabajadores/${id}`);
+  deleteTrabajador: async (chat_id) => {
+    return await api.delete(`/trabajadores/${chat_id}`);
   }
 };
 

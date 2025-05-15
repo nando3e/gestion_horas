@@ -50,13 +50,10 @@ const ListaTrabajadores = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTrabajador, setSelectedTrabajador] = useState(null);
   
-  // Estado para formulario
+  // Estado para formulario - SIMPLIFICADO para solo incluir chat_id y nombre
   const [formData, setFormData] = useState({
+    chat_id: '',
     nombre: '',
-    apellidos: '',
-    dni: '',
-    telefono: '',
-    email: ''
   });
 
   // Cargar datos iniciales
@@ -101,14 +98,12 @@ const ListaTrabajadores = () => {
     setPage(0);
   };
   
-  // Filtrar trabajadores según criterios
+  // Filtrar trabajadores según criterios - SIMPLIFICADO para solo buscar por nombre
   const filteredTrabajadores = trabajadores.filter(trabajador => {
-    // Filtro por texto de búsqueda en nombre, apellidos, DNI o email
+    // Filtro por texto de búsqueda en nombre o chat_id
     return (
       (trabajador.nombre ? trabajador.nombre.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
-      (trabajador.apellidos ? trabajador.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
-      (trabajador.dni ? trabajador.dni.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
-      (trabajador.email ? trabajador.email.toLowerCase().includes(searchTerm.toLowerCase()) : false)
+      (trabajador.chat_id ? trabajador.chat_id.toLowerCase().includes(searchTerm.toLowerCase()) : false)
     );
   });
   
@@ -121,27 +116,21 @@ const ListaTrabajadores = () => {
     });
   };
   
-  // Abrir diálogo para nuevo trabajador
+  // Abrir diálogo para nuevo trabajador - SIMPLIFICADO
   const handleOpenNewDialog = () => {
     setFormData({
-      nombre: '',
-      apellidos: '',
-      dni: '',
-      telefono: '',
-      email: ''
+      chat_id: '',
+      nombre: ''
     });
     setDialogOpen(true);
     setSelectedTrabajador(null);
   };
   
-  // Abrir diálogo para editar trabajador
+  // Abrir diálogo para editar trabajador - SIMPLIFICADO
   const handleOpenEditDialog = (trabajador) => {
     setFormData({
-      nombre: trabajador.nombre || '',
-      apellidos: trabajador.apellidos || '',
-      dni: trabajador.dni || '',
-      telefono: trabajador.telefono || '',
-      email: trabajador.email || ''
+      chat_id: trabajador.chat_id || '',
+      nombre: trabajador.nombre || ''
     });
     setSelectedTrabajador(trabajador);
     setDialogOpen(true);
@@ -164,12 +153,12 @@ const ListaTrabajadores = () => {
     setSelectedTrabajador(null);
   };
   
-  // Guardar trabajador (crear o actualizar)
+  // Guardar trabajador (crear o actualizar) - SIMPLIFICADO
   const handleGuardarTrabajador = async () => {
     try {
       // Validaciones básicas
-      if (!formData.nombre || !formData.apellidos || !formData.dni) {
-        alert('Los campos Nombre, Apellidos y DNI son obligatorios');
+      if (!formData.chat_id || !formData.nombre) {
+        alert('Los campos ID y Nombre son obligatorios');
         return;
       }
       
@@ -177,10 +166,12 @@ const ListaTrabajadores = () => {
       
       if (selectedTrabajador) {
         // Actualizar trabajador existente
-        result = await trabajadoresService.updateTrabajador(selectedTrabajador.id, formData);
+        result = await trabajadoresService.updateTrabajador(selectedTrabajador.chat_id, formData);
         
         // Actualizar la lista de trabajadores
-        setTrabajadores(trabajadores.map(t => t.id === result.id ? result : t));
+        setTrabajadores(trabajadores.map(t => 
+          t.chat_id === result.chat_id ? result : t
+        ));
       } else {
         // Crear nuevo trabajador
         result = await trabajadoresService.createTrabajador(formData);
@@ -197,13 +188,13 @@ const ListaTrabajadores = () => {
     }
   };
   
-  // Eliminar trabajador
+  // Eliminar trabajador - ACTUALIZADO para usar chat_id
   const handleEliminarTrabajador = async () => {
     try {
-      await trabajadoresService.deleteTrabajador(selectedTrabajador.id);
+      await trabajadoresService.deleteTrabajador(selectedTrabajador.chat_id);
       
       // Actualizar la lista de trabajadores
-      setTrabajadores(trabajadores.filter(t => t.id !== selectedTrabajador.id));
+      setTrabajadores(trabajadores.filter(t => t.chat_id !== selectedTrabajador.chat_id));
       
       handleCloseDeleteDialog();
       alert('Trabajador eliminado con éxito');
@@ -249,7 +240,7 @@ const ListaTrabajadores = () => {
                   size="small"
                   value={searchTerm}
                   onChange={handleSearchChange}
-                  placeholder="Buscar por nombre, apellidos, DNI o email..."
+                  placeholder="Buscar por ID o nombre..."
                 />
               </Box>
             </Box>
@@ -266,7 +257,7 @@ const ListaTrabajadores = () => {
           </Box>
         </Paper>
 
-        {/* Tabla de trabajadores */}
+        {/* Tabla de trabajadores - SIMPLIFICADA */}
         <Paper elevation={3} className="overflow-hidden">
           {loading ? (
             <Box className="flex justify-center items-center p-10">
@@ -278,11 +269,8 @@ const ListaTrabajadores = () => {
                 <Table aria-label="tabla de trabajadores">
                   <TableHead className="bg-gray-100">
                     <TableRow>
+                      <TableCell className="font-bold">ID</TableCell>
                       <TableCell className="font-bold">Nombre</TableCell>
-                      <TableCell className="font-bold">Apellidos</TableCell>
-                      <TableCell className="font-bold">DNI</TableCell>
-                      <TableCell className="font-bold">Teléfono</TableCell>
-                      <TableCell className="font-bold">Email</TableCell>
                       <TableCell className="font-bold">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
@@ -290,17 +278,14 @@ const ListaTrabajadores = () => {
                     {filteredTrabajadores
                       .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                       .map((trabajador) => (
-                        <TableRow key={trabajador.id} hover>
+                        <TableRow key={trabajador.chat_id} hover>
+                          <TableCell>{trabajador.chat_id}</TableCell>
                           <TableCell>
                             <Box className="flex items-center">
                               <FaUser className="text-primary-600 mr-2" />
                               <span>{trabajador.nombre}</span>
                             </Box>
                           </TableCell>
-                          <TableCell>{trabajador.apellidos}</TableCell>
-                          <TableCell>{trabajador.dni}</TableCell>
-                          <TableCell>{trabajador.telefono || '—'}</TableCell>
-                          <TableCell>{trabajador.email || '—'}</TableCell>
                           <TableCell>
                             <Box className="flex gap-1">
                               <Tooltip title="Editar trabajador">
@@ -369,7 +354,7 @@ const ListaTrabajadores = () => {
         </Paper>
       </Box>
 
-      {/* Diálogo para crear/editar trabajador */}
+      {/* Diálogo para crear/editar trabajador - SIMPLIFICADO */}
       <Dialog 
         open={dialogOpen} 
         onClose={handleCloseDialog}
@@ -382,47 +367,22 @@ const ListaTrabajadores = () => {
         <DialogContent>
           <Box className="space-y-4 pt-2">
             <TextField
+              name="chat_id"
+              label="ID del Trabajador"
+              value={formData.chat_id}
+              onChange={handleFormChange}
+              fullWidth
+              required
+              disabled={selectedTrabajador} // No permitir editar el ID si es una actualización
+            />
+            
+            <TextField
               name="nombre"
               label="Nombre"
               value={formData.nombre}
               onChange={handleFormChange}
               fullWidth
               required
-            />
-            
-            <TextField
-              name="apellidos"
-              label="Apellidos"
-              value={formData.apellidos}
-              onChange={handleFormChange}
-              fullWidth
-              required
-            />
-            
-            <TextField
-              name="dni"
-              label="DNI"
-              value={formData.dni}
-              onChange={handleFormChange}
-              fullWidth
-              required
-            />
-            
-            <TextField
-              name="telefono"
-              label="Teléfono"
-              value={formData.telefono}
-              onChange={handleFormChange}
-              fullWidth
-            />
-            
-            <TextField
-              name="email"
-              label="Email"
-              value={formData.email}
-              onChange={handleFormChange}
-              fullWidth
-              type="email"
             />
           </Box>
         </DialogContent>
@@ -450,7 +410,7 @@ const ListaTrabajadores = () => {
         </DialogTitle>
         <DialogContent>
           <DialogContentText>
-            ¿Estás seguro de que quieres eliminar al trabajador <strong>{selectedTrabajador?.nombre} {selectedTrabajador?.apellidos}</strong>?
+            ¿Estás seguro de que quieres eliminar al trabajador <strong>{selectedTrabajador?.nombre}</strong>?
             Esta acción no se puede deshacer.
           </DialogContentText>
         </DialogContent>

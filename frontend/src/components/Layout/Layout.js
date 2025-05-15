@@ -68,7 +68,7 @@ const Layout = ({ children }) => {
       icon: <FaHome className="text-xl" /> 
     },
     { 
-      name: 'Mis Horas', 
+      name: user && (user.rol === 'admin' || user.rol === 'secretaria') ? 'Horas' : 'Mis Horas', 
       path: '/horas', 
       icon: <FaClock className="text-xl" /> 
     }
@@ -184,7 +184,7 @@ const Layout = ({ children }) => {
             sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }}
           >
             {location.pathname === '/dashboard' ? 'Dashboard' : 
-             location.pathname === '/horas' ? 'Mis Horas' : 
+             location.pathname === '/horas' ? (user && (user.rol === 'admin' || user.rol === 'secretaria') ? 'Horas' : 'Mis Horas') : 
              location.pathname === '/obras' ? 'Obras' : 
              location.pathname === '/partidas' ? 'Partidas' : 
              location.pathname === '/trabajadores' ? 'Trabajadores' : 

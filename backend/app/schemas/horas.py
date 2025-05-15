@@ -6,8 +6,8 @@ from decimal import Decimal
 class HoraBase(BaseModel):
     """Schema base para horas"""
     fecha: date = Field(..., description="Fecha del registro de horas")
-    id_obra: int = Field(..., description="ID de la obra")
-    id_partida: int = Field(..., description="ID de la partida")
+    id_obra: Optional[int] = Field(None, description="ID de la obra")
+    id_partida: Optional[int] = Field(None, description="ID de la partida")
     horario: Optional[str] = Field(None, description="Horario en formato texto (ej: '08:00-12:00')")
     horas_totales: Decimal = Field(..., description="Total de horas trabajadas")
     es_extra: bool = Field(False, description="Indica si son horas extra")
@@ -37,9 +37,9 @@ class HoraInDB(HoraBase):
     timestamp: datetime = Field(..., description="Fecha y hora del registro")
     chat_id: str = Field(..., description="ID del trabajador")
     nombre_trabajador: str = Field(..., description="Nombre del trabajador")
-    nombre_partida: str = Field(..., description="Nombre de la partida")
+    nombre_partida: Optional[str] = Field(None, description="Nombre de la partida")
     año: int = Field(..., description="Año del registro")
-    mes: str = Field(..., description="Mes del registro")
+    mes: str = Field(..., description="Mes del registro (nombre del mes)")
     
     class Config:
         from_attributes = True
@@ -69,8 +69,8 @@ Hora = HoraInDB
 class TramoCreate(BaseModel):
     chat_id: str
     fecha: date
-    id_obra: int
-    id_partida: int
+    id_obra: Optional[int] = None
+    id_partida: Optional[int] = None
     hora_inicio: time
     hora_fin: time
     horas_totales: Decimal

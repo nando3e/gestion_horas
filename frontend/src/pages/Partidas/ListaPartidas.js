@@ -159,6 +159,11 @@ const ListaPartidas = () => {
                             partida.acabada === false;
     
     return matchesSearch && matchesObra && matchesAcabada;
+  }).sort((a, b) => {
+    // Ordenar por nombre de obra
+    const obraA = obras.find(o => o.id_obra === a.id_obra)?.nombre_obra || '';
+    const obraB = obras.find(o => o.id_obra === b.id_obra)?.nombre_obra || '';
+    return obraA.localeCompare(obraB);
   });
   
   // Cambios en el formulario
@@ -227,8 +232,10 @@ const ListaPartidas = () => {
       
       // Preparar datos para enviar al servidor
       const partidaData = {
-        ...formData,
-        id_obra: parseInt(formData.id_obra)
+        nombre_partida: formData.nombre,
+        descripcion: formData.descripcion,
+        id_obra: parseInt(formData.id_obra),
+        acabada: formData.acabada
       };
       
       let result;
@@ -278,7 +285,6 @@ const ListaPartidas = () => {
       
       // Llamar a la API para actualizar
       const result = await partidasService.updatePartida(partida.id_partida, {
-        ...partida,
         acabada: nuevoEstado
       });
       
@@ -402,7 +408,7 @@ const ListaPartidas = () => {
                   </TableHead>
                   <TableBody>
                     {filteredPartidas
-                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                      .slice(page * rowsPerPage, rowsPerPage === -1 ? filteredPartidas.length : page * rowsPerPage + rowsPerPage)
                       .map((partida) => (
                         <TableRow key={partida.id_partida} hover>
                           <TableCell>
@@ -465,7 +471,7 @@ const ListaPartidas = () => {
                 </Table>
               </TableContainer>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 25]}
+                rowsPerPageOptions={[5, 10, 25, { label: 'Todas', value: -1 }]}
                 component="div"
                 count={filteredPartidas.length}
                 rowsPerPage={rowsPerPage}

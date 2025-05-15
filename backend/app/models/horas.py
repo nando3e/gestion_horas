@@ -20,7 +20,8 @@ class Hora(Base):
     
     # Columnas generadas: SQLAlchemy sabrá que no debe intentar insertar/actualizar estos campos
     año = Column(Integer, Computed("EXTRACT(YEAR FROM fecha)", persisted=True), nullable=False)
-    mes = Column(Integer, Computed("EXTRACT(MONTH FROM fecha)", persisted=True), nullable=False)
+    # Garantizar que el mes es un entero y no se transforma en nombre
+    mes = Column(Integer, Computed("EXTRACT(MONTH FROM fecha)::integer", persisted=True), nullable=False)
 
     es_extra = Column(Boolean, nullable=True, default=False)
     tipo_extra = Column(CITEXT, nullable=True)

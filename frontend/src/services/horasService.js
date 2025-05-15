@@ -3,13 +3,27 @@ import api from './api';
 const horasService = {
   // Obtener horas con filtros
   getHoras: async (filtros = {}) => {
-    // Convertir filtros a query string
-    const queryString = Object.keys(filtros)
-      .map(key => `${key}=${filtros[key]}`)
-      .join('&');
-    
-    const response = await api.get(`/horas${queryString ? `?${queryString}` : ''}`);
-    return response.data;
+    try {
+      // Crear un objeto URLSearchParams para construir correctamente la query
+      const params = new URLSearchParams();
+      
+      // Añadir cada filtro al objeto de params
+      Object.entries(filtros).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          params.append(key, value);
+        }
+      });
+      
+      // Convertir a string de consulta
+      const queryString = params.toString();
+      
+      // Realizar la petición con el query string
+      const response = await api.get(`/horas${queryString ? `?${queryString}` : ''}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener horas:', error);
+      throw error;
+    }
   },
   
   // Obtener información del usuario actual, incluyendo chat_id
@@ -27,17 +41,25 @@ const horasService = {
   
   // Obtener horas de un mes específico
   getHorasMes: async (año, mes) => {
-    const response = await api.get('/horas/mes/', {
-      params: { año, mes }
-    });
+    // Calcular fechas de inicio y fin del mes
+    const primerDia = new Date(año, mes, 1).toISOString().split('T')[0];
+    const ultimoDia = new Date(año, mes + 1, 0).toISOString().split('T')[0];
+    
+    const params = new URLSearchParams();
+    params.append('fecha_inicio', primerDia);
+    params.append('fecha_fin', ultimoDia);
+    
+    const response = await api.get(`/horas?${params.toString()}`);
     return response.data;
   },
   
   // Obtener resumen mensual
   getResumenMensual: async (año, mes) => {
-    const response = await api.get('/horas/resumen-mensual/', {
-      params: { año, mes }
-    });
+    const params = new URLSearchParams();
+    params.append('año', año);
+    params.append('mes', mes);
+    
+    const response = await api.get(`/horas/resumen-mensual?${params.toString()}`);
     return response.data;
   },
   

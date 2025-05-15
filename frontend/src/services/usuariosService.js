@@ -33,7 +33,9 @@ const usuariosService = {
   
   // Cambiar la contraseña de un usuario
   cambiarPassword: async (id, passwordData) => {
-    const response = await api.post(`/usuarios/${id}/cambiar-password`, passwordData);
+    const response = await api.post(`/usuarios/${id}/reset-password`, null, {
+      params: { new_password: passwordData.password }
+    });
     return response.data;
   },
   

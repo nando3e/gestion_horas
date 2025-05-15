@@ -6,11 +6,11 @@ import partidasService from '../../services/partidasService';
 import trabajadoresService from '../../services/trabajadoresService';
 import authService from '../../services/authService';
 import {
-  Box, Paper, Typography, TextField, Select, MenuItem, Button, FormControl, InputLabel, FormControlLabel, Switch, Radio, RadioGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Alert, Chip, Stack, useMediaQuery, useTheme, Card, CardContent, Divider, Grid, Dialog, DialogTitle, DialogContent, DialogActions
+  Box, Paper, Typography, TextField, Select, MenuItem, Button, FormControl, InputLabel, FormControlLabel, Switch, Radio, RadioGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Alert, Chip, Stack, useMediaQuery, useTheme, Card, CardContent, Divider, Grid
 } from '@mui/material';
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '15', '30', '45'];
 
 const RegistrarHoras = () => {
   // Estados principales
@@ -40,17 +40,6 @@ const RegistrarHoras = () => {
   const [editandoId, setEditandoId] = useState(null);
   const [formError, setFormError] = useState('');
   const [adding, setAdding] = useState(false);
-
-  // Estados para edición
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [registroEditando, setRegistroEditando] = useState(null);
-  const [horarioEdicion, setHorarioEdicion] = useState('');
-  const [horasTotalesEdicion, setHorasTotalesEdicion] = useState('');
-  const [editandoPartida, setEditandoPartida] = useState('');
-  const [editandoEsExtra, setEditandoEsExtra] = useState(false);
-  const [editandoTipoExtra, setEditandoTipoExtra] = useState('interno');
-  const [editandoDescripcionExtra, setEditandoDescripcionExtra] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
 
   // Theme y media queries para responsive design
   const theme = useTheme();
@@ -206,60 +195,6 @@ const RegistrarHoras = () => {
     cargarRegistros();
   }, [cargarRegistros]); // La dependencia es la propia función cargarRegistros
 
-  // Función para validar tramos solapados
-  const validarSolapamientos = (horarioNuevo, registrosExistentes) => {
-    // Convertir el nuevo horario en un array de objetos con hora inicio y fin en minutos
-    const nuevosTramos = horarioNuevo.split(',').map(tramo => {
-      const [inicio, fin] = tramo.split('-');
-      const [horaInicio, minInicio] = inicio.split(':').map(Number);
-      const [horaFin, minFin] = fin.split(':').map(Number);
-      
-      return {
-        inicioMinutos: horaInicio * 60 + minInicio,
-        finMinutos: horaFin * 60 + minFin
-      };
-    });
-    
-    // Comprobar solapamiento con cada registro existente
-    for (const registro of registrosExistentes) {
-      // Si el registro es el que estamos editando, lo saltamos
-      if (registro.id_movimiento === (editandoId || null)) {
-        continue;
-      }
-      
-      // Convertir cada horario existente en tramos de minutos
-      const tramosExistentes = registro.horario.split(',').map(tramo => {
-        const [inicio, fin] = tramo.split('-');
-        const [horaInicio, minInicio] = inicio.split(':').map(Number);
-        const [horaFin, minFin] = fin.split(':').map(Number);
-        
-        return {
-          inicioMinutos: horaInicio * 60 + minInicio,
-          finMinutos: horaFin * 60 + minFin,
-          obra: registro.id_obra,
-          partida: registro.id_partida
-        };
-      });
-      
-      // Comprobar si hay solapamiento entre tramos
-      for (const tramoNuevo of nuevosTramos) {
-        for (const tramoExistente of tramosExistentes) {
-          // Hay solapamiento si el inicio del nuevo es menor que el fin del existente Y
-          // el fin del nuevo es mayor que el inicio del existente
-          if (tramoNuevo.inicioMinutos < tramoExistente.finMinutos && 
-              tramoNuevo.finMinutos > tramoExistente.inicioMinutos) {
-            return {
-              solapado: true,
-              mensaje: `El horario se solapa con otro registro existente (${registro.horario}) en la obra "${obras.find(o => o.id_obra === registro.id_obra)?.nombre_obra || 'Desconocida'}"`
-            };
-          }
-        }
-      }
-    }
-    
-    return { solapado: false };
-  };
-
   // --- Lógica para añadir/editar registro de horas ---
   const handleAddRegistro = async () => {
     setAdding(true);
@@ -302,20 +237,6 @@ const RegistrarHoras = () => {
     // Construir los datos del registro
     // El backend espera un solo string para horario, ej: "08:00-12:00,13:00-17:00"
     const horarioString = esRegularizacion ? null : tramos.map(t => `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`).join(',');
-
-    // Validar solapamientos con registros existentes para el mismo día y trabajador
-    if (!esRegularizacion && horarioString) {
-      const registrosDeMismoDia = registrosDia.filter(r => 
-        r.id_movimiento !== (editandoId || null) // Excluir el registro que estamos editando
-      );
-      
-      const validacion = validarSolapamientos(horarioString, registrosDeMismoDia);
-      if (validacion.solapado) {
-        setFormError(validacion.mensaje);
-        setAdding(false);
-        return;
-      }
-    }
 
     const registroData = {
       chat_id: (usuario && usuario.rol === 'trabajador') ? usuario.chat_id : trabajadorSeleccionado, // USAR usuario.chat_id o el trabajadorSeleccionado (que es un chat_id)
@@ -366,79 +287,51 @@ const RegistrarHoras = () => {
 
   // Editar registro
   const handleEditar = (registro) => {
-    // Abrir el modal de edición
-    setRegistroEditando(registro);
-    setEditandoPartida(registro.id_partida.toString());
-    setHorarioEdicion(registro.horario || '');
-    setHorasTotalesEdicion(registro.horas_totales.toString());
-    setEditandoEsExtra(!!registro.es_extra);
-    setEditandoTipoExtra(registro.tipo_extra || 'interno');
-    setEditandoDescripcionExtra(registro.descripcion_extra || '');
-    setEditModalOpen(true);
-  };
+    setEditandoId(registro.id_movimiento);
+    // Asegurarse de que trabajadorSeleccionado se establece si es admin/secretaria editando
+    if (usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria')) {
+      setTrabajadorSeleccionado(registro.chat_id); // USAR registro.chat_id
+    }
+    setObraSeleccionada(registro.id_obra.toString()); 
+    setPartidaSeleccionada(registro.id_partida.toString());
+    setFecha(registro.fecha.substring(0,10)); // Asegurar formato YYYY-MM-DD
 
-  // Guardar edición
-  const handleSaveEdit = async () => {
+    setEsRegularizacion(!!registro.es_regularizacion); // Convertir a booleano
+
+    if (registro.es_regularizacion) {
+      setHorasRegularizacion(registro.horas_totales.toString());
+      setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]); // Reset tramos
+    } else {
+      const horarios = registro.horario ? registro.horario.split(',') : [];
+      if (horarios.length > 0 && horarios[0]) { // Comprobar que hay horario y no es vacío
+        const newTramos = horarios.map(horario => {
+          const [ini, fin] = horario.split('-');
+          const [hIni, mIni] = ini.split(':');
+          const [hFin, mFin] = fin.split(':');
+          return { horaInicio: hIni, minutoInicio: mIni, horaFin: hFin, minutoFin: mFin };
+        });
+        setTramos(newTramos);
+      } else {
+        // Si no hay horario (puede ser un registro antiguo o incorrecto), resetear a un tramo por defecto
+        setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+      }
+      setHorasRegularizacion(''); // Limpiar horas de regularización
+    }
+
+    setEsExtra(!!registro.es_extra); // Convertir a booleano
+    setTipoExtra(registro.tipo_extra || 'interno');
+    setDescripcionExtra(registro.descripcion_extra || '');
     setFormError('');
-    setEditLoading(true);
-    
-    if (!editandoPartida) {
-      setFormError('Por favor, selecciona una partida.');
-      setEditLoading(false);
-      return;
-    }
-    
-    // Construir string de horario a partir de los tramos
-    const horarioString = tramos.map(t => 
-      `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`
-    ).join(',');
-    
-    // Calcular horas totales
-    const totalHoras = calcularTotalHoras();
-    
-    // Validar solapamientos con registros existentes para el mismo día y trabajador
-    // Excluir el registro que estamos editando
-    const registrosDeMismoDia = registrosDia.filter(r => 
-      r.id_movimiento !== registroEditando.id_movimiento
-    );
-    
-    const validacion = validarSolapamientos(horarioString, registrosDeMismoDia);
-    if (validacion.solapado) {
-      setFormError(validacion.mensaje);
-      setEditLoading(false);
-      return;
-    }
-    
-    try {
-      const updatedRecord = {
-        ...registroEditando,
-        id_partida: parseInt(editandoPartida),
-        horario: horarioString,
-        horas_totales: totalHoras,
-        es_extra: editandoEsExtra,
-        tipo_extra: editandoEsExtra ? editandoTipoExtra : null,
-        descripcion_extra: editandoEsExtra ? editandoDescripcionExtra : null
-      };
-      
-      await horasService.updateHora(registroEditando.id_movimiento, updatedRecord);
-      
-      // Cerrar modal y refrescar registros
-      setEditModalOpen(false);
-      setRegistroEditando(null);
-      await cargarRegistros();
-      
-    } catch (error) {
-      console.error("Error al actualizar el registro:", error);
-      setFormError(error.response?.data?.detail || 'Error al actualizar el registro');
-    } finally {
-      setEditLoading(false);
-    }
   };
 
   // Cancelar edición
-  const handleCloseEditModal = () => {
-    setEditModalOpen(false);
-    setRegistroEditando(null);
+  const handleCancelarEdicion = () => {
+    setEditandoId(null);
+    setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+    setEsRegularizacion(false);
+    setHorasRegularizacion('');
+    setEsExtra(false); setTipoExtra('interno'); setDescripcionExtra('');
+    setPartidaSeleccionada('');
     setFormError('');
   };
 
@@ -499,7 +392,6 @@ const RegistrarHoras = () => {
             <CircularProgress />
           </Box>
         ) : (
-          <>
           <form onSubmit={(e) => { e.preventDefault(); handleAddRegistro(); }}>
             <Box display="flex" flexDirection="column" gap={isMobile ? 1.5 : 2}>
               {/* Trabajador (solo admin/secretaria) */}
@@ -718,6 +610,7 @@ const RegistrarHoras = () => {
             </Box>
           </form>
           
+          {/* Tabla de registros del día */}
           <Paper elevation={3} className="mt-6">
             <Box className="p-4">
               <Typography variant="h6" className="mb-4">
@@ -837,189 +730,8 @@ const RegistrarHoras = () => {
               )}
             </Box>
           </Paper>
-          </>
         )}
       </Box>
-      
-      {/* Modal de edición */}
-      <Dialog 
-        open={editModalOpen} 
-        onClose={handleCloseEditModal}
-        fullWidth
-        maxWidth="md"
-      >
-        <DialogTitle>Editar Registro de Horas</DialogTitle>
-        <DialogContent>
-          {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
-          
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            {/* Obra (solo lectura) */}
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Obra"
-                value={obras.find(o => o.id_obra === parseInt(obraSeleccionada))?.nombre_obra || ''}
-                InputProps={{ readOnly: true }}
-                fullWidth
-              />
-            </Grid>
-            
-            {/* Partida */}
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Partida</InputLabel>
-                <Select
-                  value={editandoPartida}
-                  label="Partida"
-                  onChange={(e) => setEditandoPartida(e.target.value)}
-                >
-                  <MenuItem value="">Selecciona una partida</MenuItem>
-                  {partidas.map(p => (
-                    <MenuItem key={p.id_partida} value={p.id_partida.toString()}>
-                      {p.nombre_partida}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            {/* Tramos horarios */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>Tramos horarios</Typography>
-              {tramos.map((tramo, idx) => (
-                <Box 
-                  key={idx} 
-                  display="flex" 
-                  flexDirection={isMobile ? "column" : "row"} 
-                  gap={1} 
-                  alignItems={isMobile ? "stretch" : "center"} 
-                  mb={2}
-                  sx={{
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    backgroundColor: idx % 2 === 0 ? 'background.default' : 'background.paper'
-                  }}
-                >
-                  {/* Tramo inicio */}
-                  <Box display="flex" gap={1} flex={1}>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Hora inicio</InputLabel>
-                      <Select
-                        value={tramo.horaInicio}
-                        label="Hora inicio"
-                        onChange={e => handleTramoChange(idx, 'horaInicio', e.target.value)}
-                      >
-                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Minuto inicio</InputLabel>
-                      <Select
-                        value={tramo.minutoInicio}
-                        label="Minuto inicio"
-                        onChange={e => handleTramoChange(idx, 'minutoInicio', e.target.value)}
-                      >
-                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  
-                  {/* Separador */}
-                  <Box display="flex" alignItems="center" justifyContent="center" py={1}>
-                    <Typography>-</Typography>
-                  </Box>
-                  
-                  {/* Tramo fin */}
-                  <Box display="flex" gap={1} flex={1}>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Hora fin</InputLabel>
-                      <Select
-                        value={tramo.horaFin}
-                        label="Hora fin"
-                        onChange={e => handleTramoChange(idx, 'horaFin', e.target.value)}
-                      >
-                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Minuto fin</InputLabel>
-                      <Select
-                        value={tramo.minutoFin}
-                        label="Minuto fin"
-                        onChange={e => handleTramoChange(idx, 'minutoFin', e.target.value)}
-                      >
-                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  
-                  {/* Botón eliminar */}
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    onClick={() => handleRemoveTramo(idx)}
-                    disabled={tramos.length === 1}
-                    sx={{ alignSelf: isMobile ? 'flex-end' : 'center', minWidth: 0, px: 1, mt: isMobile ? 1 : 0 }}
-                  >
-                    X
-                  </Button>
-                </Box>
-              ))}
-              <Button variant="outlined" size="small" onClick={handleAddTramo} sx={{ mt: 1 }}>Añadir tramo</Button>
-              <Typography mt={2} fontWeight={600}>Total de horas: {calcularTotalHoras().toFixed(2)}</Typography>
-            </Grid>
-            
-            {/* Es extra */}
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={<Switch checked={editandoEsExtra} onChange={(e) => setEditandoEsExtra(e.target.checked)} />}
-                label="¿Es extra?"
-              />
-            </Grid>
-            
-            {/* Tipo de extra y descripción (solo si es extra) */}
-            {editandoEsExtra && (
-              <>
-                <Grid item xs={12} md={6}>
-                  <FormControl component="fieldset">
-                    <RadioGroup
-                      row
-                      value={editandoTipoExtra}
-                      onChange={(e) => setEditandoTipoExtra(e.target.value)}
-                    >
-                      <FormControlLabel value="interno" control={<Radio />} label="Interno" />
-                      <FormControlLabel value="externo" control={<Radio />} label="Externo" />
-                    </RadioGroup>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    label="Descripción del extra"
-                    value={editandoDescripcionExtra}
-                    onChange={(e) => setEditandoDescripcionExtra(e.target.value)}
-                    fullWidth
-                    required={editandoEsExtra}
-                  />
-                </Grid>
-              </>
-            )}
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditModal}>Cancelar</Button>
-          <Button 
-            onClick={handleSaveEdit}
-            variant="contained" 
-            color="primary"
-            disabled={editLoading}
-          >
-            {editLoading ? 'Guardando...' : 'Guardar Cambios'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Layout>
   );
 };
