@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Layout from '../../components/Layout/Layout';
 import horasService from '../../services/horasService';
 import obrasService from '../../services/obrasService';
@@ -6,7 +6,42 @@ import partidasService from '../../services/partidasService';
 import trabajadoresService from '../../services/trabajadoresService';
 import authService from '../../services/authService';
 import {
-  Box, Paper, Typography, TextField, Select, MenuItem, Button, FormControl, InputLabel, FormControlLabel, Switch, Radio, RadioGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress, Alert, Chip, Stack, useMediaQuery, useTheme, Card, CardContent, Divider, Grid, Dialog, DialogTitle, DialogContent, DialogActions
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  FormHelperText,
+  Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Radio,
+  RadioGroup,
+  Select,
+  Stack,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -45,8 +80,9 @@ const RegistrarHoras = () =>
 
   // Edición/eliminación
   const [editandoId, setEditandoId] = useState(null);
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [registrosCompletos, setRegistrosCompletos] = useState([]);
 
   // Estados para edición
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -65,7 +101,23 @@ const RegistrarHoras = () =>
   ayerDate.setDate(hoyDate.getDate() - 1);
   const hoyISO = hoyDate.toISOString().split('T')[0];
   const ayerISO = ayerDate.toISOString().split('T')[0];
+
+  // Función auxiliar para convertir hora a minutos para ordenación
+  const convertirHoraAMinutos = (horaStr) => {
+    if (!horaStr || typeof horaStr !== 'string' || !horaStr.includes(':')) {
+      return Number.MAX_SAFE_INTEGER; // Para que registros sin hora_inicio válida queden al final
+    }
+    const [horas, minutos] = horaStr.split(':').map(Number);
+    return horas * 60 + minutos;
+  };
   const [editandoTramosHorarios, setEditandoTramosHorarios] = useState([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]);
+
+  const totalHorasRegistradasDia = useMemo(() => {
+    return registrosDia.reduce((sum, registro) => {
+      const horas = parseFloat(registro.horas_totales);
+      return sum + (isNaN(horas) ? 0 : horas);
+    }, 0).toFixed(2);
+  }, [registrosDia]);
   const [partidasModalEdicion, setPartidasModalEdicion] = useState([]);
 
   // Theme y media queries para responsive design
@@ -132,15 +184,23 @@ const RegistrarHoras = () =>
         registrosFecha = regs.filter(reg => reg.fecha && reg.fecha.substring(0, 10) === fecha);
       }
 
-      console.log('[RegistrarHoras - cargarRegistros] Registros filtrados por fecha (después de la verificación):', registrosFecha.length);
+      console.log('[RegistrarHoras - DEBUG] Registros ANTES de ordenar:', JSON.parse(JSON.stringify(registrosFecha.map(r => r.hora_inicio))));
       
+      // Ordenar registros por hora_inicio antes de establecer el estado
+      registrosFecha.sort((a, b) => {
+        const minutosA = convertirHoraAMinutos(a.hora_inicio);
+        const minutosB = convertirHoraAMinutos(b.hora_inicio);
+        console.log(`[RegistrarHoras - DEBUG SORT] Comparando: A='${a.hora_inicio}' (${minutosA}) con B='${b.hora_inicio}' (${minutosB}) => Resultado: ${minutosA - minutosB}`);
+        return minutosA - minutosB; // Ascendente
+      });
+      console.log('[RegistrarHoras - DEBUG] Registros DESPUÉS de ordenar:', JSON.parse(JSON.stringify(registrosFecha.map(r => r.hora_inicio))));
       setRegistrosDia(registrosFecha);
     } catch (err) {
       setError(`Error al cargar registros del día: ${err.message || 'Error desconocido'}`);
       console.error("Error en cargarRegistros: ", err);
       setRegistrosDia([]);
     }
-  }, [usuario, trabajadorSeleccionado, fecha]); // Dependencias de cargarRegistros
+  }, [usuario, trabajadorSeleccionado, fecha, registrosCompletos]); // Dependencias de cargarRegistros
 
   // Cargar datos iniciales
   const cargarDatosIniciales = useCallback(async () => {
@@ -209,7 +269,7 @@ const RegistrarHoras = () =>
         registros = [];
       }
     }
-    setRegistrosDia(registros);
+    setRegistrosCompletos(registros || []); // Poblar la lista maestra, la ordenación y el filtro por día se hará en cargarRegistros
   }, [trabajadorSeleccionado]);
 
   useEffect(() => {
@@ -1083,6 +1143,21 @@ const RegistrarHoras = () =>
                             </TableRow>
                           ))}
                         </TableBody>
+                        {registrosDia.length > 0 && (
+                          <TableFooter style={{ backgroundColor: '#f0f0f0' }}>
+                            <TableRow>
+                              <TableCell colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold', borderBottom: 'none' }}>
+                                <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>Total Horas del Día:</Typography>
+                              </TableCell>
+                              <TableCell align="right" style={{ fontWeight: 'bold', borderBottom: 'none' }}>
+                                <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>{totalHorasRegistradasDia}</Typography>
+                              </TableCell>
+                              {/* Columnas: Obra, Partida, Horario | Horas | ¿Extra?, Tipo extra, Descripción extra, Acciones (8 total) */}
+                              {/* ColSpan para ¿Extra? y las siguientes 3 es 4 */}
+                              <TableCell colSpan={4} style={{ borderBottom: 'none' }} /> 
+                            </TableRow>
+                          </TableFooter>
+                        )}
                       </Table>
                     </TableContainer>
                   )}
@@ -1092,7 +1167,6 @@ const RegistrarHoras = () =>
           </Paper>
           </>
         )}
-      </Box>
       
       {/* Modal de edición */}
       <Dialog 
@@ -1269,6 +1343,7 @@ const RegistrarHoras = () =>
           </Button>
         </DialogActions>
       </Dialog>
+      </Box> {/* Cierre del Box className="pb-6" de la línea 712 */}
     </Layout>
   );
 };

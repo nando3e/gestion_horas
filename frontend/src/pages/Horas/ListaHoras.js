@@ -97,6 +97,22 @@ const ListaHoras = () => {
   const [modalError, setModalError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
+  // Función auxiliar para convertir hora a minutos para ordenación
+  const convertirHoraAMinutos = (horaStr) => {
+    if (!horaStr || typeof horaStr !== 'string' || !horaStr.includes(':')) {
+      return Number.MAX_SAFE_INTEGER; // Para que registros sin hora_inicio válida queden al final en ordenación secundaria
+    }
+    const [horas, minutos] = horaStr.split(':').map(Number);
+    return horas * 60 + minutos;
+  };
+
+  const formatTimeHHMM = (timeStr) => {
+    if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) {
+      return ''; // O devuelve '-' si prefieres un placeholder visible
+    }
+    return timeStr.substring(0, 5); // Extrae HH:MM
+  };
+
   // Función para determinar si un registro es editable/eliminable por un trabajador
   const esFechaPermitidaParaAccionTrabajador = (fechaRegistroStr) => {
     if (!fechaRegistroStr) return false; // Si no hay fecha, no se permite
@@ -154,6 +170,18 @@ const ListaHoras = () => {
         }
         
         const data = await horasService.getHoras(params);
+        // Ordenar datos: primero por fecha descendente, luego por hora_inicio ascendente
+        data.sort((a, b) => {
+          const fechaA = new Date(a.fecha);
+          const fechaB = new Date(b.fecha);
+          if (fechaA.getTime() !== fechaB.getTime()) {
+            return fechaB.getTime() - fechaA.getTime(); // Descendente por fecha
+          }
+          // Si las fechas son iguales, comparar por hora_inicio (ascendente)
+          const minutosA = convertirHoraAMinutos(a.hora_inicio);
+          const minutosB = convertirHoraAMinutos(b.hora_inicio);
+          return minutosA - minutosB;
+        });
         setHoras(data);
         setError('');
       } catch (err) {
@@ -670,6 +698,7 @@ const ListaHoras = () => {
                       )}
                       <TableCell className="font-bold">Obra</TableCell>
                       <TableCell className="font-bold">Partida</TableCell>
+                      <TableCell className="font-bold">Horario</TableCell>
                       <TableCell className="font-bold">Horas</TableCell>
                       <TableCell className="font-bold">Extra</TableCell>
                       <TableCell className="font-bold">Acciones</TableCell>
@@ -696,6 +725,7 @@ const ListaHoras = () => {
                           )}
                           <TableCell>{obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || 'N/A'}</TableCell>
                           <TableCell>{hora.nombre_partida || 'N/A'}</TableCell>
+                          <TableCell>{formatTimeHHMM(hora.hora_inicio) && formatTimeHHMM(hora.hora_fin) ? `${formatTimeHHMM(hora.hora_inicio)}-${formatTimeHHMM(hora.hora_fin)}` : (formatTimeHHMM(hora.hora_inicio) || '-')}</TableCell>
                           <TableCell>{typeof hora.horas_totales === 'number' ? hora.horas_totales.toFixed(2) : parseFloat(hora.horas_totales || 0).toFixed(2)}</TableCell>
                           <TableCell>
                             {hora.es_extra ? (
