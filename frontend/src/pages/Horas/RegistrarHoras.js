@@ -59,6 +59,7 @@ const RegistrarHoras = () =>
   const [editandoDescripcionExtra, setEditandoDescripcionExtra] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [editandoTramosHorarios, setEditandoTramosHorarios] = useState([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]);
+  const [partidasModalEdicion, setPartidasModalEdicion] = useState([]);
 
   // Theme y media queries para responsive design
   const theme = useTheme();
@@ -204,7 +205,9 @@ const RegistrarHoras = () =>
         try {
           const partidasData = await partidasService.getPartidasPorObra(obraSeleccionada);
           // Filtrar solo las no acabadas y de la obra seleccionada
-          setPartidas(partidasData.filter(p => p.id_obra === parseInt(obraSeleccionada) && !p.acabada));
+          const filteredPartidas = partidasData.filter(p => p.id_obra === parseInt(obraSeleccionada) && !p.acabada);
+          setPartidas(filteredPartidas);
+          console.log('[RegistrarHoras - useEffect obraSeleccionada] Partidas cargadas para obra ID', obraSeleccionada, ':', filteredPartidas);
         } catch (err) {
           setPartidas([]);
         }
@@ -432,35 +435,62 @@ const RegistrarHoras = () =>
   };
 
   // Editar registro
-  const handleEditar = (registro) => {
-    setRegistroEditando(registro); // Contiene el objeto completo, incluida la obra
+  const handleEditar = async (registro) => {
+    if (!registro || typeof registro.id_obra === 'undefined' || typeof registro.id_partida === 'undefined') {
+      console.error("[RegistrarHoras - handleEditar] Error: El registro es inválido o le faltan IDs.", registro);
+      setFormError("No se puede editar el registro: datos incompletos.");
+      return;
+    }
 
-    const [hInicio, mInicio] = registro.hora_inicio ? registro.hora_inicio.split(':') : ['', ''];
-    const [hFin, mFin] = registro.hora_fin ? registro.hora_fin.split(':') : ['', ''];
+    setEditLoading(true); // Mostrar indicador de carga
+    setFormError('');
 
-    setEditandoTramosHorarios([{
-      horaInicio: hInicio[0] || '',
-      minutoInicio: mInicio[1] || '',
-      horaFin: hFin[0] || '',
-      minutoFin: mFin[1] || '',
-      idPartida: registro.id_partida ? registro.id_partida.toString() : '', // La partida se maneja aquí para el tramo único
-      esExtra: !!registro.es_extra,
-      tipoExtra: registro.tipo_extra || 'interno',
-      descripcionExtra: registro.descripcion_extra || ''
-    }]);
-  
-    // El estado editandoPartida parece redundante si la partida se gestiona dentro de editandoTramosHorarios[0].idPartida
-    // Si el campo "Partida *" del modal general (fuera de los tramos) aún se usa en edición, mantenerlo:
-    setEditandoPartida(registro.id_partida ? registro.id_partida.toString() : ''); 
+    try {
+      // 1. Cargar las partidas para la obra del registro específico
+      console.log(`[RegistrarHoras - handleEditar] Cargando partidas para obra ID: ${registro.id_obra}`);
+      const partidasData = await partidasService.getPartidasPorObra(registro.id_obra.toString());
+      // Primero, filtramos por la obra del registro actual, luego por las no acabadas
+      const obraFiltradaPartidas = partidasData.filter(p => p.id_obra === registro.id_obra);
+      const filteredPartidasModal = obraFiltradaPartidas.filter(p => !p.acabada);
+      setPartidasModalEdicion(filteredPartidasModal);
+      console.log('[RegistrarHoras - handleEditar] Partidas cargadas y filtradas para el modal:', filteredPartidasModal);
 
-    // Estos estados podrían derivarse de editandoTramosHorarios[0] o ser eliminados si el modal solo usa editandoTramosHorarios
-    // setHorarioEdicion(registro.horario || ''); 
-    // setHorasTotalesEdicion(registro.horas_totales.toString());
-    setEditandoEsExtra(!!registro.es_extra); // Se mantiene si el switch ¿Extra? es global para el modal
-    setEditandoTipoExtra(registro.tipo_extra || 'interno');
-    setEditandoDescripcionExtra(registro.descripcion_extra || '');
+      // 2. Establecer el registro que se está editando
+      setRegistroEditando(registro);
 
-    setEditModalOpen(true);
+      // 3. Formatear hora_inicio y hora_fin para los TextField del modal y otros datos del tramo
+      const [hInicio, mInicio] = registro.hora_inicio ? registro.hora_inicio.split(':') : ['', ''];
+      const [hFin, mFin] = registro.hora_fin ? registro.hora_fin.split(':') : ['', ''];
+
+      setEditandoTramosHorarios([{
+        horaInicio: hInicio || '', // CORREGIDO
+        minutoInicio: mInicio || '', // CORREGIDO
+        horaFin: hFin || '', // CORREGIDO
+        minutoFin: mFin || '', // CORREGIDO
+        // idPartida aquí es redundante si tenemos un Select de partida general para el modal
+        esExtra: !!registro.es_extra,
+        tipoExtra: registro.tipo_extra || 'interno',
+        descripcionExtra: registro.descripcion_extra || ''
+      }]);
+
+      // 4. Establecer la partida actual en el modal
+      setEditandoPartida(registro.id_partida ? registro.id_partida.toString() : '');
+
+      // 5. Establecer otros campos de edición (si son globales al modal y no por tramo)
+      setEditandoEsExtra(!!registro.es_extra);
+      setEditandoTipoExtra(registro.tipo_extra || 'interno');
+      setEditandoDescripcionExtra(registro.descripcion_extra || '');
+
+      // 6. Abrir el modal
+      setEditModalOpen(true);
+
+    } catch (error) {
+      console.error("[RegistrarHoras - handleEditar] Error al cargar partidas o preparar modal:", error);
+      setFormError("Error al cargar datos para la edición: " + (error.message || 'Desconocido'));
+      setPartidasModalEdicion([]); // Limpiar en caso de error
+    } finally {
+      setEditLoading(false); // Ocultar indicador de carga
+    }
   };
 
   // Guardar edición
@@ -541,6 +571,8 @@ const RegistrarHoras = () =>
     setEditModalOpen(false);
     setRegistroEditando(null);
     setFormError('');
+    setPartidasModalEdicion([]); // Limpiar partidas del modal al cerrar
+    setEditandoTramosHorarios([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]); // Resetear tramos
   };
 
   // Eliminar registro
@@ -1050,9 +1082,10 @@ const RegistrarHoras = () =>
                   value={editandoPartida}
                   label="Partida"
                   onChange={(e) => setEditandoPartida(e.target.value)}
+                  disabled={partidasModalEdicion.length === 0 || editLoading}
                 >
                   <MenuItem value="">Selecciona una partida</MenuItem>
-                  {partidas.map(p => (
+                  {partidasModalEdicion.map(p => (
                     <MenuItem key={p.id_partida} value={p.id_partida.toString()}>
                       {p.nombre_partida}
                     </MenuItem>
