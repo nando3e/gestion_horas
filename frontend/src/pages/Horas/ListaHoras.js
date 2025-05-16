@@ -307,23 +307,52 @@ const ListaHoras = () => {
     }
     
     try {
-      const updatedRecord = {
-        ...editingRecord,
+      // Payload para enviar al backend (solo campos modificables)
+      const payload = {
         id_partida: parseInt(partidaSeleccionada),
-        id_obra: parseInt(obraSeleccionada),
+        id_obra: parseInt(obraSeleccionada), // Asumiendo que obraSeleccionada es el ID de la obra
         horario: horarioString,
         horas_totales: totalHoras,
         es_extra: esExtra,
         tipo_extra: esExtra ? tipoExtra : null,
         descripcion_extra: esExtra ? descripcionExtra : null
+        // NO incluir fecha o chat_id a menos que sean explícitamente modificables
+        // y el backend lo permita.
       };
-      
-      await horasService.updateHora(editingRecord.id_movimiento, updatedRecord);
-      
-      // Actualizar la lista de horas
-      setHoras(prevHoras => 
-        prevHoras.map(hora => 
-          hora.id_movimiento === editingRecord.id_movimiento ? updatedRecord : hora
+
+      // respuestaDelBackend contendrá el registro actualizado si la API lo devuelve
+      const respuestaDelBackend = await horasService.updateHora(editingRecord.id_movimiento, payload);
+
+      // Construir el objeto para actualizar el estado de la UI.
+      // Lo ideal es usar la respuestaDelBackend si esta contiene el objeto completo y actualizado.
+      // Si no, fusionamos el payload con los datos no modificados del editingRecord.
+      let registroActualizadoParaUI;
+      if (respuestaDelBackend && typeof respuestaDelBackend === 'object') {
+        // Si la API devuelve el objeto completo, podríamos necesitar conciliarlo
+        // con campos que solo existen en el frontend (como nombre_obra, nombre_partida)
+        // o asegurarnos que el backend ya los incluye.
+        // Por simplicidad ahora, asumimos que payload tiene los campos principales y editingRecord el resto.
+        registroActualizadoParaUI = {
+          ...editingRecord, // Mantiene campos como fecha, chat_id, etc.
+          ...payload,       // Sobrescribe con los datos del payload
+          // Aseguramos que los nombres descriptivos se actualicen si los IDs cambiaron:
+          nombre_partida: partidas.find(p => p.id_partida === payload.id_partida)?.nombre_partida || editingRecord.nombre_partida || '',
+          nombre_obra: obras.find(o => o.id_obra === payload.id_obra)?.nombre_obra || editingRecord.nombre_obra || ''
+        };
+      } else {
+        // Fallback si la respuesta no es lo esperado
+        registroActualizadoParaUI = {
+          ...editingRecord,
+          ...payload,
+          nombre_partida: partidas.find(p => p.id_partida === payload.id_partida)?.nombre_partida || editingRecord.nombre_partida || '',
+          nombre_obra: obras.find(o => o.id_obra === payload.id_obra)?.nombre_obra || editingRecord.nombre_obra || ''
+        };
+      }
+
+      // Actualizar la lista de horas en el estado local
+      setHoras(prevHoras =>
+        prevHoras.map(hora =>
+          hora.id_movimiento === editingRecord.id_movimiento ? registroActualizadoParaUI : hora
         )
       );
       

@@ -12,7 +12,8 @@ import {
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
-const RegistrarHoras = () => {
+const RegistrarHoras = () => 
+{
   // Estados principales
   const [usuario, setUsuario] = useState(null);
   const [trabajadores, setTrabajadores] = useState([]);
@@ -28,7 +29,13 @@ const RegistrarHoras = () => {
   const [partidaSeleccionada, setPartidaSeleccionada] = useState('');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [tramos, setTramos] = useState([
-    { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }
+    {
+      horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00',
+      idPartida: '',
+      esExtra: false,
+      tipoExtra: 'interno',
+      descripcionExtra: ''
+    }
   ]);
   const [esRegularizacion, setEsRegularizacion] = useState(false);
   const [horasRegularizacion, setHorasRegularizacion] = useState('');
@@ -51,6 +58,7 @@ const RegistrarHoras = () => {
   const [editandoTipoExtra, setEditandoTipoExtra] = useState('interno');
   const [editandoDescripcionExtra, setEditandoDescripcionExtra] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+  const [editandoTramosHorarios, setEditandoTramosHorarios] = useState([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]);
 
   // Theme y media queries para responsive design
   const theme = useTheme();
@@ -83,10 +91,17 @@ const RegistrarHoras = () => {
       console.log('[RegistrarHoras - cargarRegistros] Cargando registros con params:', queryParams);
       
       const regs = await horasService.getHoras(queryParams);
-      
-      // Solo mostrar los registros de la fecha seleccionada (en caso de que la API devuelva registros de más días)
-      const registrosFecha = regs.filter(reg => reg.fecha && reg.fecha.substring(0, 10) === fecha);
-      console.log('[RegistrarHoras - cargarRegistros] Registros filtrados por fecha:', registrosFecha.length);
+      let registrosFecha;
+
+      if (!Array.isArray(regs)) {
+        console.error("[RegistrarHoras - cargarRegistros] Error: La respuesta 'regs' de horasService.getHoras no es un array. Valor recibido:", regs);
+        registrosFecha = []; // Tratar como array vacío para evitar error en .filter
+      } else {
+        // Solo mostrar los registros de la fecha seleccionada (en caso de que la API devuelva registros de más días)
+        registrosFecha = regs.filter(reg => reg.fecha && reg.fecha.substring(0, 10) === fecha);
+      }
+
+      console.log('[RegistrarHoras - cargarRegistros] Registros filtrados por fecha (después de la verificación):', registrosFecha.length);
       
       setRegistrosDia(registrosFecha);
     } catch (err) {
@@ -286,8 +301,12 @@ const RegistrarHoras = () => {
         return;
     }
 
-    if (!obraSeleccionada || !partidaSeleccionada || (esRegularizacion ? !horasRegularizacion : tramos.some(t => !t.horaInicio || !t.minutoInicio || !t.horaFin || !t.minutoFin))) {
-      setFormError('Por favor, completa todos los campos obligatorios del formulario y al menos un tramo horario.');
+    if (!obraSeleccionada || 
+        (esRegularizacion 
+          ? (!partidaSeleccionada || !horasRegularizacion) 
+          : tramos.some(t => !t.horaInicio || !t.minutoInicio || !t.horaFin || !t.minutoFin || !t.idPartida)) 
+    ) {
+      setFormError('Por favor, completa todos los campos obligatorios: Obra, y para cada tramo: horas y partida. Si es regularización, también la partida global y las horas de regularización.');
       setAdding(false);
       return;
     }
@@ -303,56 +322,104 @@ const RegistrarHoras = () => {
     // El backend espera un solo string para horario, ej: "08:00-12:00,13:00-17:00"
     const horarioString = esRegularizacion ? null : tramos.map(t => `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`).join(',');
 
-    // Validar solapamientos con registros existentes para el mismo día y trabajador
-    if (!esRegularizacion && horarioString) {
-      const registrosDeMismoDia = registrosDia.filter(r => 
-        r.id_movimiento !== (editandoId || null) // Excluir el registro que estamos editando
-      );
-      
-      const validacion = validarSolapamientos(horarioString, registrosDeMismoDia);
-      if (validacion.solapado) {
-        setFormError(validacion.mensaje);
-        setAdding(false);
-        return;
-      }
+    // Validar solapamientos (Temporalmente comentado - la validación principal estará en el backend)
+    /*
+    if (!esRegularizacion && tramos.length > 0) {
+      // Aquí podríamos añadir una validación de solapamientos ENTRE los tramos que se están añadiendo
+      // y/o una validación preliminar con registrosDia.
+      // Por ahora, se delega al backend.
+    }
+    */
+
+    let payload;
+    if (esRegularizacion) {
+      payload = {
+        chat_id: (usuario && usuario.rol === 'trabajador') ? usuario.chat_id : trabajadorSeleccionado,
+        nombre_trabajador: '', // El backend lo obtiene
+        fecha: fecha,
+        id_obra: parseInt(obraSeleccionada),
+        id_partida: parseInt(partidaSeleccionada), // Partida global para regularización
+        horario: null, // No aplica para regularización individual
+        horas_totales: totalHorasCalculado,
+        es_extra: false, // Regularizaciones no son extra bajo este modelo
+        tipo_extra: null,
+        descripcion_extra: null,
+        es_regularizacion: true,
+      };
+    } else {
+      // Crear un array de payloads, uno por cada tramo
+      payload = tramos.map(tramo => {
+        // Calcular horas_totales para este tramo específico
+        const inicioDate = new Date(`1970-01-01T${tramo.horaInicio}:${tramo.minutoInicio}:00`);
+        const finDate = new Date(`1970-01-01T${tramo.horaFin}:${tramo.minutoFin}:00`);
+        let diffMillis = finDate - inicioDate;
+        if (diffMillis < 0) { // Si el tramo cruza la medianoche (ej. 22:00 - 02:00), no manejado aquí directamente
+          // Considerar cómo manejar esto o si es un caso no permitido. Por ahora, tratar como error o cálculo simple.
+          // Para un cálculo simple que no cruce medianoche:
+          diffMillis = Math.max(0, diffMillis); 
+        }
+        const horasTramo = diffMillis / (1000 * 60 * 60);
+
+        return {
+          chat_id: (usuario && usuario.rol === 'trabajador') ? usuario.chat_id : trabajadorSeleccionado,
+          nombre_trabajador: '', // El backend lo obtiene
+          fecha: fecha,
+          id_obra: parseInt(obraSeleccionada),
+          id_partida: parseInt(tramo.idPartida), // Partida específica del tramo
+          hora_inicio: `${tramo.horaInicio}:${tramo.minutoInicio}`,
+          hora_fin: `${tramo.horaFin}:${tramo.minutoFin}`,
+          // 'horario' (string combinado) ya no se usa para registros por tramo
+          horas_totales: horasTramo,
+          es_extra: tramo.esExtra,
+          tipo_extra: tramo.esExtra ? tramo.tipoExtra : null,
+          descripcion_extra: tramo.esExtra ? tramo.descripcionExtra : null,
+          es_regularizacion: false, // Los tramos individuales no son regularizaciones
+        };
+      });
     }
 
-    const registroData = {
-      chat_id: (usuario && usuario.rol === 'trabajador') ? usuario.chat_id : trabajadorSeleccionado, // USAR usuario.chat_id o el trabajadorSeleccionado (que es un chat_id)
-      nombre_trabajador: '', // El backend lo obtiene a partir del chat_id
-      fecha: fecha,
-      id_obra: parseInt(obraSeleccionada),
-      id_partida: parseInt(partidaSeleccionada),
-      horario: horarioString,
-      horas_totales: totalHorasCalculado,
-      es_extra: esExtra,
-      tipo_extra: esExtra ? tipoExtra : null,
-      descripcion_extra: esExtra ? descripcionExtra : null,
-      es_regularizacion: esRegularizacion,
-    };
-
     try {
-      await horasService.createHora(registroData);
-      setFormError(''); // Limpiar error si la creación fue exitosa
-      // Resetear formulario y recargar registros
+      if (esRegularizacion) {
+        await horasService.createHora(payload); // Endpoint existente para una sola hora/regularización
+      } else {
+        // Asumimos un nuevo endpoint para crear múltiples horas (tramos) en lote
+        // Esto requerirá crear horasService.createHorasLote que envíe el array 'payload'
+        await horasService.createHorasLote({ tramos: payload }); 
+      }
+
+      // Si todo va bien, limpiar error y resetear formulario:
+      setFormError('');
       setObraSeleccionada('');
-      setPartidaSeleccionada('');
-      // setFecha(new Date().toISOString().slice(0, 10)); // Opcional: resetear fecha o mantenerla
-      setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+      // Si es regularización y se usaba partidaSeleccionada globalmente, resetearla.
+      if (esRegularizacion) {
+          setPartidaSeleccionada(''); 
+      }
+      setTramos([
+        {
+          horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00',
+          idPartida: '',
+          esExtra: false,
+          tipoExtra: 'interno',
+          descripcionExtra: ''
+        }
+      ]);
       setEsRegularizacion(false);
       setHorasRegularizacion('');
-      setEsExtra(false);
-      setTipoExtra('interno');
-      setDescripcionExtra('');
-      await cargarRegistros(); // Llamada para refrescar la lista
+      // Los estados globales de esExtra, tipoExtra, descripcionExtra ya no se resetean aquí.
+
+      // Llamada para refrescar la lista de registros del día
+      await cargarRegistros();
+      setEditandoId(null); // Limpiar el ID si se estaba editando
+
     } catch (err) {
       console.error("Error in handleAddRegistro:", err);
       let errorMessage = 'Error al guardar el registro.';
       if (err.response && err.response.data && err.response.data.detail) {
         if (Array.isArray(err.response.data.detail)) {
           errorMessage = err.response.data.detail.map(e => {
-            const loc = e.loc && e.loc.length > 1 ? e.loc[1] : (e.loc ? e.loc[0] : 'Error');
-            return `${loc} - ${e.msg}`;
+            const loc = e.loc && e.loc.length > 1 ? e.loc[1] : (e.loc && e.loc.length > 0 ? e.loc[0] : 'Campo desconocido');
+            const msg = e.msg || 'Error desconocido';
+            return `${loc}: ${msg}`;
           }).join('; ');
         } else if (typeof err.response.data.detail === 'string') {
           errorMessage = err.response.data.detail;
@@ -366,14 +433,33 @@ const RegistrarHoras = () => {
 
   // Editar registro
   const handleEditar = (registro) => {
-    // Abrir el modal de edición
-    setRegistroEditando(registro);
-    setEditandoPartida(registro.id_partida.toString());
-    setHorarioEdicion(registro.horario || '');
-    setHorasTotalesEdicion(registro.horas_totales.toString());
-    setEditandoEsExtra(!!registro.es_extra);
+    setRegistroEditando(registro); // Contiene el objeto completo, incluida la obra
+
+    const [hInicio, mInicio] = registro.hora_inicio ? registro.hora_inicio.split(':') : ['', ''];
+    const [hFin, mFin] = registro.hora_fin ? registro.hora_fin.split(':') : ['', ''];
+
+    setEditandoTramosHorarios([{
+      horaInicio: hInicio[0] || '',
+      minutoInicio: mInicio[1] || '',
+      horaFin: hFin[0] || '',
+      minutoFin: mFin[1] || '',
+      idPartida: registro.id_partida ? registro.id_partida.toString() : '', // La partida se maneja aquí para el tramo único
+      esExtra: !!registro.es_extra,
+      tipoExtra: registro.tipo_extra || 'interno',
+      descripcionExtra: registro.descripcion_extra || ''
+    }]);
+  
+    // El estado editandoPartida parece redundante si la partida se gestiona dentro de editandoTramosHorarios[0].idPartida
+    // Si el campo "Partida *" del modal general (fuera de los tramos) aún se usa en edición, mantenerlo:
+    setEditandoPartida(registro.id_partida ? registro.id_partida.toString() : ''); 
+
+    // Estos estados podrían derivarse de editandoTramosHorarios[0] o ser eliminados si el modal solo usa editandoTramosHorarios
+    // setHorarioEdicion(registro.horario || ''); 
+    // setHorasTotalesEdicion(registro.horas_totales.toString());
+    setEditandoEsExtra(!!registro.es_extra); // Se mantiene si el switch ¿Extra? es global para el modal
     setEditandoTipoExtra(registro.tipo_extra || 'interno');
     setEditandoDescripcionExtra(registro.descripcion_extra || '');
+
     setEditModalOpen(true);
   };
 
@@ -381,28 +467,40 @@ const RegistrarHoras = () => {
   const handleSaveEdit = async () => {
     setFormError('');
     setEditLoading(true);
-    
+
     if (!editandoPartida) {
-      setFormError('Por favor, selecciona una partida.');
+      setFormError('Por favor, selecciona una partida para el registro que estás editando.');
       setEditLoading(false);
       return;
     }
-    
-    // Construir string de horario a partir de los tramos
-    const horarioString = tramos.map(t => 
-      `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`
-    ).join(',');
-    
-    // Calcular horas totales
-    const totalHoras = calcularTotalHoras();
-    
+  if (!editandoTramosHorarios || editandoTramosHorarios.length === 0) {
+    setFormError('Error: No hay datos del tramo para editar.');
+    setEditLoading(false);
+    return;
+  }
+  const tramoEditado = editandoTramosHorarios[0];
+  const { horaInicio, minutoInicio, horaFin, minutoFin } = tramoEditado;
+
+  if (!horaInicio || !minutoInicio || !horaFin || !minutoFin) {
+    setFormError('Por favor, completa todas las horas y minutos del tramo.');
+    setEditLoading(false);
+    return;
+  }
+
+  const nuevaHoraInicioStr = `${horaInicio}:${minutoInicio}`;
+  const nuevaHoraFinStr = `${horaFin}:${minutoFin}`;
+  const nuevoHorarioStr = `${nuevaHoraInicioStr}-${nuevaHoraFinStr}`;
+  
+  // Calcular horas totales del tramo editado
+  const totalHoras = calcularHorasEditandoTramo();
+
     // Validar solapamientos con registros existentes para el mismo día y trabajador
     // Excluir el registro que estamos editando
     const registrosDeMismoDia = registrosDia.filter(r => 
       r.id_movimiento !== registroEditando.id_movimiento
     );
     
-    const validacion = validarSolapamientos(horarioString, registrosDeMismoDia);
+    const validacion = validarSolapamientos(nuevoHorarioStr, registrosDeMismoDia);
     if (validacion.solapado) {
       setFormError(validacion.mensaje);
       setEditLoading(false);
@@ -411,13 +509,16 @@ const RegistrarHoras = () => {
     
     try {
       const updatedRecord = {
-        ...registroEditando,
-        id_partida: parseInt(editandoPartida),
-        horario: horarioString,
+        ...registroEditando, // Mantiene campos no editados como fecha, id_trabajador, etc.
+        id_partida: parseInt(editandoPartida), // Tomado del Select general del modal
+        horario: nuevoHorarioStr,       // String HH:MM-HH:MM
+        hora_inicio: nuevaHoraInicioStr, // String HH:MM
+        hora_fin: nuevaHoraFinStr,       // String HH:MM
         horas_totales: totalHoras,
-        es_extra: editandoEsExtra,
-        tipo_extra: editandoEsExtra ? editandoTipoExtra : null,
-        descripcion_extra: editandoEsExtra ? editandoDescripcionExtra : null
+        // Los datos de 'extra' se toman de tramoEditado para consistencia con handleEditar
+        es_extra: tramoEditado.esExtra,
+        tipo_extra: tramoEditado.esExtra ? tramoEditado.tipoExtra : null,
+        descripcion_extra: tramoEditado.esExtra ? tramoEditado.descripcionExtra : null
       };
       
       await horasService.updateHora(registroEditando.id_movimiento, updatedRecord);
@@ -455,11 +556,53 @@ const RegistrarHoras = () => {
 
   // --- NUEVO: Funciones para gestionar tramos ---
   const handleTramoChange = (index, field, value) => {
-    setTramos(prev => prev.map((tramo, i) => i === index ? { ...tramo, [field]: value } : tramo));
+    const nuevosTramos = [...tramos];
+    nuevosTramos[index][field] = value;
+    // Si se desactiva esExtra para un tramo, limpiar sus campos relacionados
+    if (field === 'esExtra' && !value) {
+      nuevosTramos[index].tipoExtra = 'interno';
+      nuevosTramos[index].descripcionExtra = '';
+    }
+    setTramos(nuevosTramos);
   };
   const handleAddTramo = () => {
-    setTramos(prev => ([...prev, { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]));
+    setTramos([
+      ...tramos,
+      {
+        horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '',
+        idPartida: '',
+        esExtra: false,
+        tipoExtra: 'interno',
+        descripcionExtra: ''
+      }
+    ]);
   };
+  const handleEditandoTramoChange = (field, value) => {
+    setEditandoTramosHorarios(prev => {
+      const updatedTramo = { ...prev[0], [field]: value };
+      // Si esExtra se desmarca, limpiar campos dependientes
+      if (field === 'esExtra' && !value) {
+        updatedTramo.tipoExtra = 'interno';
+        updatedTramo.descripcionExtra = '';
+      }
+      return [updatedTramo];
+    });
+  };
+
+  const calcularHorasEditandoTramo = () => {
+    if (!editandoTramosHorarios || editandoTramosHorarios.length === 0) return 0;
+    const tramo = editandoTramosHorarios[0];
+    if (!tramo.horaInicio || !tramo.minutoInicio || !tramo.horaFin || !tramo.minutoFin) return 0;
+    const hIni = parseInt(tramo.horaInicio);
+    const mIni = parseInt(tramo.minutoInicio);
+    const hFin = parseInt(tramo.horaFin);
+    const mFin = parseInt(tramo.minutoFin);
+    if (isNaN(hIni) || isNaN(mIni) || isNaN(hFin) || isNaN(mFin)) return 0;
+    let horas = (hFin + mFin / 60) - (hIni + mIni / 60);
+    // if (horas < 0) horas += 24; // Considerar si se permiten tramos que crucen medianoche
+    return Math.max(0, horas);
+  };
+
   const handleRemoveTramo = (index) => {
     if (tramos.length === 1) return; // No permitir menos de un tramo
     setTramos(prev => prev.filter((_, i) => i !== index));
@@ -518,6 +661,17 @@ const RegistrarHoras = () => {
                   </Select>
                 </FormControl>
               )}
+              {/* Fecha */}
+              <TextField
+                label="Fecha"
+                type="date"
+                value={fecha}
+                onChange={e => setFecha(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                required
+                fullWidth
+                sx={{ mb: 2 }}
+              />
               {/* Obra */}
               <FormControl fullWidth required>
                 <InputLabel>Obra</InputLabel>
@@ -532,31 +686,23 @@ const RegistrarHoras = () => {
                   ))}
                 </Select>
               </FormControl>
-              {/* Partida */}
-              <FormControl fullWidth required>
-                <InputLabel>Partida</InputLabel>
-                <Select
-                  value={partidaSeleccionada}
-                  label="Partida"
-                  onChange={e => setPartidaSeleccionada(e.target.value)}
-                >
-                  <MenuItem value="">Selecciona una partida</MenuItem>
-                  {partidas.map(p => (
-                    <MenuItem key={p.id_partida} value={p.id_partida}>{p.nombre_partida}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              {/* Fecha */}
-              <TextField
-                label="Fecha"
-                type="date"
-                value={fecha}
-                onChange={e => setFecha(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                required
-                fullWidth
-                sx={{ mb: 2 }}
-              />
+              {/* Partida (Solo para regularización) */}
+              {esRegularizacion && (
+                <FormControl fullWidth required>
+                  <InputLabel>Partida</InputLabel>
+                  <Select
+                    value={partidaSeleccionada}
+                    label="Partida"
+                    onChange={e => setPartidaSeleccionada(e.target.value)}
+                    disabled={!obraSeleccionada} // Opcional: deshabilitar si no hay obra
+                  >
+                    <MenuItem value="">Selecciona una partida</MenuItem>
+                    {partidas.map(p => (
+                      <MenuItem key={p.id_partida} value={p.id_partida}>{p.nombre_partida}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
 
               {/* --- Switch para Es Regularización --- */}
               {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
@@ -605,17 +751,18 @@ const RegistrarHoras = () => {
                       gap={1} 
                       alignItems={isMobile ? "stretch" : "center"} 
                       mb={2}
-                      sx={{
-                        p: 1,
+                      sx={theme => ({
+                        p: 1.5, // Aumentar un poco el padding para el color de fondo
                         border: '1px solid',
-                        borderColor: 'divider',
+                        borderColor: theme.palette.divider,
                         borderRadius: 1,
-                        backgroundColor: idx % 2 === 0 ? 'background.default' : 'background.paper'
-                      }}
+                        backgroundColor: theme.palette.grey[100], // Color de fondo para los tramos
+                        boxShadow: theme.shadows[1] // Opcional: añadir una ligera sombra
+                      })}
                     >
                       {/* Fila superior en móvil - Tramo inicio */}
                       <Box display="flex" gap={1} flex={1}>
-                        <FormControl required fullWidth={isMobile}>
+                        <FormControl required fullWidth={isMobile} sx={theme => ({ backgroundColor: theme.palette.background.paper })}>
                           <InputLabel>Hora inicio</InputLabel>
                           <Select
                             value={tramo.horaInicio}
@@ -625,7 +772,7 @@ const RegistrarHoras = () => {
                             {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
                           </Select>
                         </FormControl>
-                        <FormControl required fullWidth={isMobile}>
+                        <FormControl required fullWidth={isMobile} sx={theme => ({ backgroundColor: theme.palette.background.paper })}>
                           <InputLabel>Minuto inicio</InputLabel>
                           <Select
                             value={tramo.minutoInicio}
@@ -644,7 +791,7 @@ const RegistrarHoras = () => {
                       
                       {/* Fila inferior en móvil - Tramo fin */}
                       <Box display="flex" gap={1} flex={1}>
-                        <FormControl required fullWidth={isMobile}>
+                        <FormControl required fullWidth={isMobile} sx={theme => ({ backgroundColor: theme.palette.background.paper })}>
                           <InputLabel>Hora fin</InputLabel>
                           <Select
                             value={tramo.horaFin}
@@ -654,7 +801,7 @@ const RegistrarHoras = () => {
                             {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
                           </Select>
                         </FormControl>
-                        <FormControl required fullWidth={isMobile}>
+                        <FormControl required fullWidth={isMobile} sx={theme => ({ backgroundColor: theme.palette.background.paper })}>
                           <InputLabel>Minuto fin</InputLabel>
                           <Select
                             value={tramo.minutoFin}
@@ -666,6 +813,64 @@ const RegistrarHoras = () => {
                         </FormControl>
                       </Box>
                       
+                      {/* Selector de Partida para el Tramo */}
+                      <FormControl fullWidth required sx={theme => ({ mt: isMobile ? 2 : 0, mb: isMobile ? 1 : 0, flexBasis: '100%', '@media (min-width: 600px)': { flexBasis: 'auto', minWidth: 220 }, backgroundColor: theme.palette.background.paper } )}>
+                        <InputLabel id={`partida-tramo-label-${idx}`}>Partida</InputLabel>
+                        <Select
+                          labelId={`partida-tramo-label-${idx}`}
+                          value={tramo.idPartida}
+                          label="Partida del Tramo"
+                          onChange={e => handleTramoChange(idx, 'idPartida', e.target.value)}
+                        >
+                          <MenuItem value=""><em>Selecciona partida</em></MenuItem>
+                          {partidas.map(p => (
+                            <MenuItem key={p.id_partida} value={p.id_partida}>{p.nombre_partida}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      {/* Controles "Es Extra" para el Tramo */}
+                      <Box sx={{ mt: 1, p: 1.5, border: '1px solid', borderColor: 'rgba(0, 0, 0, 0.12)', borderRadius: 1, width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={tramo.esExtra}
+                              onChange={e => handleTramoChange(idx, 'esExtra', e.target.checked)}
+                              color="primary"
+                              size="small"
+                            />
+                          }
+                          label={<Typography variant="body2">¿Tramo Extra?</Typography>}
+                          sx={{ alignSelf: 'flex-start' }}
+                        />
+                        {tramo.esExtra && (
+                          <Box sx={{ pl: 0, display: 'flex', flexDirection: 'column', gap: 1 /* Ajustado para móvil */ }}>
+                            <FormControl component="fieldset">
+                              <RadioGroup
+                                row
+                                value={tramo.tipoExtra}
+                                onChange={e => handleTramoChange(idx, 'tipoExtra', e.target.value)}
+                                sx={{ justifyContent: 'flex-start' }}
+                              >
+                                <FormControlLabel value="interno" control={<Radio size="small" />} label={<Typography variant="caption">Interno</Typography>} />
+                                <FormControlLabel value="externo" control={<Radio size="small" />} label={<Typography variant="caption">Externo</Typography>} />
+                              </RadioGroup>
+                            </FormControl>
+                            <TextField
+                              label="Descripción Extra (Tramo)"
+                              value={tramo.descripcionExtra}
+                              onChange={e => handleTramoChange(idx, 'descripcionExtra', e.target.value)}
+                              required={tramo.esExtra} /* Esto es opcional, podrías quitarlo si la descripción no es estrictamente requerida */
+                              fullWidth
+                              variant="outlined"
+                              size="small"
+                              multiline
+                              rows={1} /* Empezar con 1 fila, se expandirá si es necesario */
+                            />
+                          </Box>
+                        )}
+                      </Box>
+
                       {/* Botón eliminar */}
                       <Button
                         variant="outlined"
@@ -673,7 +878,7 @@ const RegistrarHoras = () => {
                         size="small"
                         onClick={() => handleRemoveTramo(idx)}
                         disabled={tramos.length === 1}
-                        sx={{ alignSelf: isMobile ? 'flex-end' : 'center', minWidth: 0, px: 1, mt: isMobile ? 1 : 0 }}
+                        sx={{ alignSelf: 'center', minWidth: 'auto', px: 1, mt: isMobile ? 1 : 0, ml: !isMobile ? 1 : 0 /* Margen a la izquierda en desktop */ }}
                       >
                         X
                       </Button>
@@ -681,32 +886,6 @@ const RegistrarHoras = () => {
                   ))}
                   <Button variant="outlined" size="small" onClick={handleAddTramo} sx={{ mt: 1 }}>Añadir tramo</Button>
                   <Typography mt={2} fontWeight={600}>Total de horas: {calcularTotalHoras().toFixed(2)}</Typography>
-                </Box>
-              )}
-              {/* Extra */}
-              <FormControlLabel
-                control={<Switch checked={esExtra} onChange={e => setEsExtra(e.target.checked)} color="primary" />}
-                label="¿Es extra?"
-              />
-              {esExtra && (
-                <Box sx={{ p: 1.5, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" mb={1}>Detalles del extra</Typography>
-                  <RadioGroup 
-                    row={!isMobile} 
-                    value={tipoExtra} 
-                    onChange={e => setTipoExtra(e.target.value)}
-                  >
-                    <FormControlLabel value="interno" control={<Radio />} label="Interno" />
-                    <FormControlLabel value="externo" control={<Radio />} label="Externo" />
-                  </RadioGroup>
-                  <TextField
-                    label="Descripción del extra"
-                    value={descripcionExtra}
-                    onChange={e => setDescripcionExtra(e.target.value)}
-                    required={esExtra}
-                    fullWidth
-                    sx={{ mt: 1 }}
-                  />
                 </Box>
               )}
               {formError && <Alert severity="error">{formError}</Alert>}
@@ -857,7 +1036,7 @@ const RegistrarHoras = () => {
             <Grid item xs={12} md={6}>
               <TextField
                 label="Obra"
-                value={obras.find(o => o.id_obra === parseInt(obraSeleccionada))?.nombre_obra || ''}
+                value={registroEditando ? (obras.find(o => o.id_obra === registroEditando.id_obra)?.nombre_obra || '') : ''}
                 InputProps={{ readOnly: true }}
                 fullWidth
               />
@@ -885,90 +1064,85 @@ const RegistrarHoras = () => {
             {/* Tramos horarios */}
             <Grid item xs={12}>
               <Typography variant="subtitle1" gutterBottom>Tramos horarios</Typography>
-              {tramos.map((tramo, idx) => (
-                <Box 
-                  key={idx} 
-                  display="flex" 
-                  flexDirection={isMobile ? "column" : "row"} 
-                  gap={1} 
-                  alignItems={isMobile ? "stretch" : "center"} 
-                  mb={2}
-                  sx={{
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    backgroundColor: idx % 2 === 0 ? 'background.default' : 'background.paper'
-                  }}
-                >
-                  {/* Tramo inicio */}
-                  <Box display="flex" gap={1} flex={1}>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Hora inicio</InputLabel>
-                      <Select
-                        value={tramo.horaInicio}
-                        label="Hora inicio"
-                        onChange={e => handleTramoChange(idx, 'horaInicio', e.target.value)}
-                      >
-                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Minuto inicio</InputLabel>
-                      <Select
-                        value={tramo.minutoInicio}
-                        label="Minuto inicio"
-                        onChange={e => handleTramoChange(idx, 'minutoInicio', e.target.value)}
-                      >
-                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  
-                  {/* Separador */}
-                  <Box display="flex" alignItems="center" justifyContent="center" py={1}>
-                    <Typography>-</Typography>
-                  </Box>
-                  
-                  {/* Tramo fin */}
-                  <Box display="flex" gap={1} flex={1}>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Hora fin</InputLabel>
-                      <Select
-                        value={tramo.horaFin}
-                        label="Hora fin"
-                        onChange={e => handleTramoChange(idx, 'horaFin', e.target.value)}
-                      >
-                        {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl required fullWidth={isMobile}>
-                      <InputLabel>Minuto fin</InputLabel>
-                      <Select
-                        value={tramo.minutoFin}
-                        label="Minuto fin"
-                        onChange={e => handleTramoChange(idx, 'minutoFin', e.target.value)}
-                      >
-                        {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  
-                  {/* Botón eliminar */}
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    onClick={() => handleRemoveTramo(idx)}
-                    disabled={tramos.length === 1}
-                    sx={{ alignSelf: isMobile ? 'flex-end' : 'center', minWidth: 0, px: 1, mt: isMobile ? 1 : 0 }}
+              {editandoTramosHorarios && editandoTramosHorarios.length > 0 && (() => {
+                const tramo = editandoTramosHorarios[0]; // Get the first (and should be only) tramo
+                const idx = 0; // key for the Box, can be static as it's the only one
+                return (
+                  <Box 
+                    key={idx} 
+                    display="flex" 
+                    flexDirection={isMobile ? "column" : "row"} 
+                    gap={1} 
+                    alignItems={isMobile ? "stretch" : "center"} 
+                    mb={2}
+                    sx={{
+                      p: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      backgroundColor: 'background.default' // Static background, or remove if not needed for single item
+                    }}
                   >
-                    X
-                  </Button>
-                </Box>
-              ))}
-              <Button variant="outlined" size="small" onClick={handleAddTramo} sx={{ mt: 1 }}>Añadir tramo</Button>
-              <Typography mt={2} fontWeight={600}>Total de horas: {calcularTotalHoras().toFixed(2)}</Typography>
+                    {/* Tramo inicio */}
+                    <Box display="flex" gap={1} flex={1}>
+                      <FormControl required fullWidth={isMobile}>
+                        <InputLabel>Hora inicio</InputLabel>
+                        <Select
+                          value={tramo.horaInicio}
+                          label="Hora inicio"
+                          onChange={e => handleEditandoTramoChange('horaInicio', e.target.value)}
+                        >
+                          {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                      <FormControl required fullWidth={isMobile}>
+                        <InputLabel>Minuto inicio</InputLabel>
+                        <Select
+                          value={tramo.minutoInicio}
+                          label="Minuto inicio"
+                          onChange={e => handleEditandoTramoChange('minutoInicio', e.target.value)}
+                        >
+                          {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    
+                    {/* Separador */}
+                    <Box display="flex" alignItems="center" justifyContent="center" py={1}>
+                      <Typography>-</Typography>
+                    </Box>
+                    
+                    {/* Tramo fin */}
+                    <Box display="flex" gap={1} flex={1}>
+                      <FormControl required fullWidth={isMobile}>
+                        <InputLabel>Hora fin</InputLabel>
+                        <Select
+                          value={tramo.horaFin}
+                          label="Hora fin"
+                          onChange={e => handleEditandoTramoChange('horaFin', e.target.value)}
+                        >
+                          {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                      <FormControl required fullWidth={isMobile}>
+                        <InputLabel>Minuto fin</InputLabel>
+                        <Select
+                          value={tramo.minutoFin}
+                          label="Minuto fin"
+                          onChange={e => handleEditandoTramoChange('minutoFin', e.target.value)}
+                        >
+                          {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    
+                    {/* Botón eliminar */}
+                    {/* Button to remove tramo - not needed in edit mode for a single record */}
+                  </Box>
+                );
+              })()}
+              {/* Button to add tramo - not needed in edit mode for a single record */}
+              <Typography mt={2} fontWeight={600}>Total de horas: {calcularHorasEditandoTramo().toFixed(2)}</Typography>
             </Grid>
             
             {/* Es extra */}
@@ -1024,4 +1198,4 @@ const RegistrarHoras = () => {
   );
 };
 
-export default RegistrarHoras; 
+export default RegistrarHoras;

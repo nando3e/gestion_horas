@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from sqlalchemy.orm import Session
@@ -18,7 +19,11 @@ from app.core.auth import get_password_hash
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Gestión de Horas API", redirect_slashes=False)
+app = FastAPI(title="Gestión de Horas API", redirect_slashes=True)
+
+# Middleware para confiar en los encabezados X-Forwarded-* del proxy
+# Esto es crucial para que las redirecciones y la generación de URLs funcionen correctamente con HTTPS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Configurar CORS
 app.add_middleware(

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Date, DateTime, Boolean, Text, ForeignKey, Numeric, Computed, String 
+from sqlalchemy import Column, Integer, String, Date, Boolean, Numeric, ForeignKey, TIMESTAMP, Text, Computed, Time
 from sqlalchemy.dialects.postgresql import CITEXT, TIMESTAMP
 from sqlalchemy.orm import relationship
 from app.db.database import Base
@@ -15,7 +15,9 @@ class Hora(Base):
     fecha = Column(Date, nullable=False)
     id_obra = Column(Integer, ForeignKey("obras.id_obra"), nullable=True)
     nombre_partida = Column(CITEXT, nullable=True)
-    horario = Column(CITEXT, nullable=True)
+    horario = Column(CITEXT, nullable=True) # Podría considerarse para deprecación o solo para data antigua
+    hora_inicio = Column(Time, nullable=True)
+    hora_fin = Column(Time, nullable=True)
     horas_totales = Column(Numeric(precision=4, scale=2), nullable=True)
     
     # Columnas generadas: SQLAlchemy sabrá que no debe intentar insertar/actualizar estos campos

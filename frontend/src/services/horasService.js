@@ -74,6 +74,12 @@ const horasService = {
     const response = await api.post('/horas', horaData);
     return response.data;
   },
+
+  // Crear múltiples registros de horas (tramos) en lote
+  createHorasLote: async (horasDataArray) => {
+    const response = await api.post('/horas/lote', horasDataArray);
+    return response.data;
+  },
   
   // Actualizar un registro de horas
   updateHora: async (id, horaData) => {
