@@ -58,6 +58,13 @@ const RegistrarHoras = () =>
   const [editandoTipoExtra, setEditandoTipoExtra] = useState('interno');
   const [editandoDescripcionExtra, setEditandoDescripcionExtra] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+
+  // Constantes para restringir el selector de fecha
+  const hoyDate = new Date();
+  const ayerDate = new Date();
+  ayerDate.setDate(hoyDate.getDate() - 1);
+  const hoyISO = hoyDate.toISOString().split('T')[0];
+  const ayerISO = ayerDate.toISOString().split('T')[0];
   const [editandoTramosHorarios, setEditandoTramosHorarios] = useState([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]);
   const [partidasModalEdicion, setPartidasModalEdicion] = useState([]);
 
@@ -65,6 +72,29 @@ const RegistrarHoras = () =>
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+
+  // Función para determinar si un registro es editable/eliminable por un trabajador
+  const esFechaPermitidaParaAccionTrabajador = (fechaRegistroStr) => {
+    if (!fechaRegistroStr) return false; // Si no hay fecha, no se permite
+
+    const hoy = new Date();
+    const ayer = new Date();
+    ayer.setDate(hoy.getDate() - 1);
+
+    // Normalizar 'hoy' y 'ayer' a medianoche para comparar solo fechas
+    hoy.setHours(0, 0, 0, 0);
+    ayer.setHours(0, 0, 0, 0);
+
+    // Convertir fechaRegistroStr (ej: "YYYY-MM-DD") a un objeto Date.
+    // Es crucial parsearlo correctamente para evitar problemas de zona horaria
+    // al comparar con fechas creadas localmente.
+    const parts = fechaRegistroStr.split('-'); // Asumiendo formato "YYYY-MM-DD"
+    // new Date(year, monthIndex (0-11), day)
+    const fechaRegistro = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    fechaRegistro.setHours(0, 0, 0, 0); // Normalizar también a medianoche
+
+    return fechaRegistro.getTime() === hoy.getTime() || fechaRegistro.getTime() === ayer.getTime();
+  };
 
   // --- Definición de cargarRegistros con useCallback ---
   const cargarRegistros = useCallback(async () => {
@@ -700,6 +730,12 @@ const RegistrarHoras = () =>
                 value={fecha}
                 onChange={e => setFecha(e.target.value)}
                 InputLabelProps={{ shrink: true }}
+                InputProps={{
+                  inputProps: {
+                    max: hoyISO, // No se pueden seleccionar fechas futuras
+                    ...(usuario && usuario.rol === 'trabajador' && { min: ayerISO }) // Para trabajadores, no antes de ayer
+                  }
+                }}
                 required
                 fullWidth
                 sx={{ mb: 2 }}
@@ -994,14 +1030,16 @@ const RegistrarHoras = () =>
                               )}
                               
                               <Grid item xs={12} sx={{ mt: 1 }}>
-                                <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                  <Button size="small" variant="outlined" onClick={() => handleEditar(reg)}>
-                                    Editar
-                                  </Button>
-                                  <Button size="small" variant="outlined" color="error" onClick={() => handleEliminar(reg.id_movimiento)}>
-                                    Eliminar
-                                  </Button>
-                                </Stack>
+                                { (usuario && usuario.rol !== 'trabajador') || (usuario && usuario.rol === 'trabajador' && esFechaPermitidaParaAccionTrabajador(reg.fecha)) ? (
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                    <Button size="small" variant="outlined" onClick={() => handleEditar(reg)}>
+                                      Editar
+                                    </Button>
+                                    <Button size="small" variant="outlined" color="error" onClick={() => handleEliminar(reg.id_movimiento)}>
+                                      Eliminar
+                                    </Button>
+                                  </Stack>
+                                ) : null }
                               </Grid>
                             </Grid>
                           </CardContent>
@@ -1035,8 +1073,12 @@ const RegistrarHoras = () =>
                               <TableCell>{reg.tipo_extra || '-'}</TableCell>
                               <TableCell>{reg.descripcion_extra || '-'}</TableCell>
                               <TableCell>
-                                <Button size="small" variant="outlined" onClick={() => handleEditar(reg)} sx={{ mr: 1 }}>Editar</Button>
-                                <Button size="small" variant="outlined" color="error" onClick={() => handleEliminar(reg.id_movimiento)}>Eliminar</Button>
+                                { (usuario && usuario.rol !== 'trabajador') || (usuario && usuario.rol === 'trabajador' && esFechaPermitidaParaAccionTrabajador(reg.fecha)) ? (
+                                  <>
+                                    <Button size="small" variant="outlined" onClick={() => handleEditar(reg)} sx={{ mr: 1 }}>Editar</Button>
+                                    <Button size="small" variant="outlined" color="error" onClick={() => handleEliminar(reg.id_movimiento)}>Eliminar</Button>
+                                  </>
+                                ) : null }
                               </TableCell>
                             </TableRow>
                           ))}

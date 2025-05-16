@@ -97,6 +97,26 @@ const ListaHoras = () => {
   const [modalError, setModalError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
+  // Función para determinar si un registro es editable/eliminable por un trabajador
+  const esFechaPermitidaParaAccionTrabajador = (fechaRegistroStr) => {
+    if (!fechaRegistroStr) return false; // Si no hay fecha, no se permite
+
+    const hoy = new Date();
+    const ayer = new Date();
+    ayer.setDate(hoy.getDate() - 1);
+
+    // Normalizar 'hoy' y 'ayer' a medianoche para comparar solo fechas
+    hoy.setHours(0, 0, 0, 0);
+    ayer.setHours(0, 0, 0, 0);
+
+    // Convertir fechaRegistroStr (ej: "YYYY-MM-DD") a un objeto Date.
+    const parts = fechaRegistroStr.split('-'); // Asumiendo formato "YYYY-MM-DD"
+    const fechaRegistro = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    fechaRegistro.setHours(0, 0, 0, 0); // Normalizar también a medianoche
+
+    return fechaRegistro.getTime() === hoy.getTime() || fechaRegistro.getTime() === ayer.getTime();
+  };
+
   useEffect(() => {
     const cargarHoras = async () => {
       try {
@@ -689,22 +709,24 @@ const ListaHoras = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Box className="flex gap-1">
-                              <IconButton 
-                                onClick={() => handleOpenEditModal(hora)}
-                                color="secondary"
-                                size="small"
-                              >
-                                <FaEdit />
-                              </IconButton>
-                              <IconButton 
-                                onClick={() => confirmarEliminar(hora.id_movimiento)}
-                                color="error"
-                                size="small"
-                              >
-                                <FaTrash />
-                              </IconButton>
-                            </Box>
+                            { (usuario && usuario.rol !== 'trabajador') || (usuario && usuario.rol === 'trabajador' && esFechaPermitidaParaAccionTrabajador(hora.fecha)) ? (
+                              <Box className="flex gap-1">
+                                <IconButton 
+                                  onClick={() => handleOpenEditModal(hora)}
+                                  color="secondary"
+                                  size="small"
+                                >
+                                  <FaEdit />
+                                </IconButton>
+                                <IconButton 
+                                  onClick={() => confirmarEliminar(hora.id_movimiento)}
+                                  color="error"
+                                  size="small"
+                                >
+                                  <FaTrash />
+                                </IconButton>
+                              </Box>
+                            ) : null }
                           </TableCell>
                         </TableRow>
                       ))}
