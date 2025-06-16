@@ -9,9 +9,7 @@ const partidasService = {
   
   // Obtener partidas por obra
   getPartidasPorObra: async (idObra) => {
-    const response = await api.get('/partidas/', {
-      params: { id_obra: idObra }
-    });
+    const response = await api.get(`/partidas/obra/${idObra}`);
     return response.data;
   },
   

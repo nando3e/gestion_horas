@@ -43,6 +43,7 @@ import {
   useMediaQuery,
   useTheme
 } from '@mui/material';
+import { grey } from '@mui/material/colors';
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
@@ -112,11 +113,11 @@ const RegistrarHoras = () =>
   };
   const [editandoTramosHorarios, setEditandoTramosHorarios] = useState([{ horaInicio: '', minutoInicio: '', horaFin: '', minutoFin: '', esExtra: false, tipoExtra: 'interno', descripcionExtra: '' }]);
 
-  const totalHorasRegistradasDia = useMemo(() => {
+  const totalHorasDia = useMemo(() => {
     return registrosDia.reduce((sum, registro) => {
       const horas = parseFloat(registro.horas_totales);
       return sum + (isNaN(horas) ? 0 : horas);
-    }, 0).toFixed(2);
+    }, 0);
   }, [registrosDia]);
   const [partidasModalEdicion, setPartidasModalEdicion] = useState([]);
 
@@ -968,7 +969,7 @@ const RegistrarHoras = () =>
                               size="small"
                             />
                           }
-                          label={<Typography variant="body2">¿Tramo Extra?</Typography>}
+                          label={<Typography variant="body2">¿Es extra?</Typography>}
                           sx={{ alignSelf: 'flex-start' }}
                         />
                         {tramo.esExtra && (
@@ -1019,13 +1020,13 @@ const RegistrarHoras = () =>
               {formError && <Alert severity="error">{formError}</Alert>}
               <Box display="flex" gap={2}>
                 <Button type="submit" variant="contained" color="primary" disabled={adding}>
-                  {adding ? 'Añadiendo...' : 'Añadir registro'}
+                  {adding ? 'Guardando...' : 'Guardar'}
                 </Button>
               </Box>
             </Box>
           </form>
           
-          <Paper elevation={3} className="mt-6">
+          <Paper elevation={3} className="mt-6" sx={{ backgroundColor: theme.palette.mode === 'dark' ? grey[800] : grey[50] }}>
             <Box className="p-4">
               <Typography variant="h6" className="mb-4">
                 {fecha ? (() => {
@@ -1105,6 +1106,14 @@ const RegistrarHoras = () =>
                           </CardContent>
                         </Card>
                       ))}
+                      {/* Sumatorio para móvil/tablet */}
+                      {registrosDia && registrosDia.length > 0 && totalHorasDia > 0 && (
+                        <Paper elevation={2} sx={{ p: 2, mt: 1, backgroundColor: theme.palette.mode === 'dark' ? grey[700] : grey[100] }}>
+                          <Typography variant="subtitle1" component="div" align="center" fontWeight="bold">
+                            Total Horas del Día: {totalHorasDia.toFixed(2)}
+                          </Typography>
+                        </Paper>
+                      )}
                     </Stack>
                   ) : (
                     /* Vista desktop: tabla completa */
@@ -1150,7 +1159,7 @@ const RegistrarHoras = () =>
                                 <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>Total Horas del Día:</Typography>
                               </TableCell>
                               <TableCell align="right" style={{ fontWeight: 'bold', borderBottom: 'none' }}>
-                                <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>{totalHorasRegistradasDia}</Typography>
+                                <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>{totalHorasDia.toFixed(2)}</Typography>
                               </TableCell>
                               {/* Columnas: Obra, Partida, Horario | Horas | ¿Extra?, Tipo extra, Descripción extra, Acciones (8 total) */}
                               {/* ColSpan para ¿Extra? y las siguientes 3 es 4 */}

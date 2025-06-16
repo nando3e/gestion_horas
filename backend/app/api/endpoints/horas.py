@@ -26,8 +26,11 @@ router = APIRouter()
 @router.get("", response_model=List[HoraSchema])
 async def read_horas(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     trabajador_id: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    id_obra: Optional[int] = None,
+    id_partida: Optional[int] = None,
     fecha: Optional[date] = None,
     fecha_inicio: Optional[date] = None,
     fecha_fin: Optional[date] = None,
@@ -41,18 +44,27 @@ async def read_horas(
     """
     query = db.query(Hora)
     
-    # Aplicar filtros
-    if trabajador_id:
+    # Aplicar filtros de trabajador/chat_id
+    target_chat_id = chat_id or trabajador_id  # Priorizar chat_id sobre trabajador_id
+    
+    if target_chat_id:
         # Verificar permisos (trabajador solo puede ver sus propios registros)
-        if current_user.rol == "trabajador" and current_user.chat_id != trabajador_id:
+        if current_user.rol == "trabajador" and current_user.chat_id != target_chat_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para ver registros de otros trabajadores"
             )
-        query = query.filter(Hora.chat_id == trabajador_id)
+        query = query.filter(Hora.chat_id == target_chat_id)
     elif current_user.rol == "trabajador":
         # Si es trabajador y no especifica id, filtrar por su propio id
         query = query.filter(Hora.chat_id == current_user.chat_id)
+    
+    # Aplicar filtros de obra y partida
+    if id_obra:
+        query = query.filter(Hora.id_obra == id_obra)
+    
+    if id_partida:
+        query = query.filter(Hora.id_partida == id_partida)
     
     # Filtrar por fecha exacta si se proporciona
     if fecha:

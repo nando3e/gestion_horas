@@ -20,7 +20,7 @@ router = APIRouter()
 @router.get("/", response_model=List[PartidaSchema])
 async def read_partidas(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_trabajador_user)
 ):
@@ -34,7 +34,7 @@ async def read_partidas(
 async def read_partidas_by_obra(
     obra_id: int,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_trabajador_user)
 ):
@@ -48,7 +48,7 @@ async def read_partidas_by_obra(
 async def read_partidas_activas_by_obra(
     obra_id: int,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_trabajador_user)
 ):

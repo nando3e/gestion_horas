@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - ENVIRONMENT=local
+        - REACT_APP_API_URL_LOCAL=http://api:8000/api/v1 

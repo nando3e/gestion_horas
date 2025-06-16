@@ -1,12 +1,16 @@
 # Etapa de construcción
 FROM node:18-alpine as build
 
-# Argumento que se puede pasar durante el build (ej. desde docker-compose)
+# Argumentos que se pueden pasar durante el build (ej. desde docker-compose)
 ARG REACT_APP_API_URL_PROD
+ARG ENVIRONMENT
+ARG REACT_APP_API_URL_LOCAL
 
-# Establecer la variable de entorno DENTRO de esta etapa de build
-# para que esté disponible durante 'npm run build'
+# Establecer las variables de entorno DENTRO de esta etapa de build
+# para que estén disponibles durante 'npm run build'
 ENV REACT_APP_API_URL_PROD=${REACT_APP_API_URL_PROD}
+ENV ENVIRONMENT=${ENVIRONMENT}
+ENV REACT_APP_API_URL_LOCAL=${REACT_APP_API_URL_LOCAL}
 
 WORKDIR /app
 

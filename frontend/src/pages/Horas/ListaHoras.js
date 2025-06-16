@@ -228,21 +228,28 @@ const ListaHoras = () => {
   // Manejar cambios en filtros
   const handleFiltroChange = (e) => {
     const { name, value } = e.target;
-    setFiltros({
-      ...filtros,
-      [name]: value
-    });
     
-    // Si cambia la obra, cargar las partidas correspondientes
-    if (name === 'id_obra' && value) {
-      cargarPartidasPorObra(value);
-    } else if (name === 'id_obra' && !value) {
-      // Si se deselecciona la obra, limpiar las partidas
-      setPartidas([]);
-      setFiltros(prev => ({
-        ...prev,
-        id_partida: ''
-      }));
+    // Si cambia la obra, necesitamos limpiar la partida seleccionada
+    if (name === 'id_obra') {
+      setFiltros({
+        ...filtros,
+        [name]: value,
+        id_partida: '' // Limpiar partida cuando cambia la obra
+      });
+      
+      if (value) {
+        // Cargar partidas de la nueva obra seleccionada
+        cargarPartidasPorObra(value);
+      } else {
+        // Si se deselecciona la obra, limpiar las partidas
+        setPartidas([]);
+      }
+    } else {
+      // Para otros filtros, actualizar normalmente
+      setFiltros({
+        ...filtros,
+        [name]: value
+      });
     }
   };
 
@@ -446,7 +453,20 @@ const ListaHoras = () => {
 
   // Calcular el total de horas del mes para la vista
   const calcularTotalHorasMes = () => {
-    return horas.reduce((total, hora) => total + parseFloat(hora.horas_totales), 0).toFixed(2);
+    // Los filtros de obra, partida y trabajador ya se aplicaron en el backend
+    // Solo necesitamos aplicar el filtro de búsqueda de texto
+    const horasFiltradas = horas.filter(hora => {
+      if (!filtros.busqueda) return true;
+      const busquedaMinuscula = filtros.busqueda.toLowerCase();
+      const nombreObra = obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || '';
+      const nombrePartida = hora.nombre_partida || '';
+      const nombreTrabajador = hora.nombre_trabajador || '';
+      return nombreObra.toLowerCase().includes(busquedaMinuscula) || 
+             nombrePartida.toLowerCase().includes(busquedaMinuscula) ||
+             nombreTrabajador.toLowerCase().includes(busquedaMinuscula);
+    });
+    
+    return horasFiltradas.reduce((total, hora) => total + parseFloat(hora.horas_totales), 0).toFixed(2);
   };
 
   // Función para validar tramos solapados
