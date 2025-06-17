@@ -1,8 +1,9 @@
 import axios from 'axios';
 
-// Centralizar la lógica de la URL base de la API
-// TEMPORAL: Hardcodear para Docker
-const API_URL = 'http://localhost:8000/api/v1';
+// Configuración SIMPLE de la URL base de la API
+const API_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8000/api/v1'  // LOCAL
+  : '/api/v1';                      // PRODUCCIÓN (hores.rbimprove.com)
 
 const api = axios.create({
   baseURL: API_URL,

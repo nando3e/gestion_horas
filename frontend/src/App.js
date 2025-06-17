@@ -13,6 +13,9 @@ import ListaUsuarios from './pages/Usuarios/ListaUsuarios';
 import ListaObras from './pages/Obras/ListaObras';
 import ListaPartidas from './pages/Partidas/ListaPartidas';
 import ListaTrabajadores from './pages/Trabajadores/ListaTrabajadores';
+import Informes from './pages/Informes/Informes';
+import InformeTrabajador from './pages/Informes/InformeTrabajador';
+import InformeObra from './pages/Informes/InformeObra';
 
 // Estilos
 import './App.css';
@@ -121,8 +124,9 @@ function App() {
                 <Route path="/usuarios/:id" element={<div>Detalles de Usuario (Implementar)</div>} />
                 <Route path="/usuarios/:id/editar" element={<div>Editar Usuario (Implementar)</div>} />
                 
-                <Route path="/informes" element={<div>Informes (Implementar)</div>} />
-                <Route path="/informes/mensual" element={<div>Informe Mensual (Implementar)</div>} />
+                <Route path="/informes" element={<Informes />} />
+                <Route path="/informes/trabajador" element={<InformeTrabajador />} />
+                <Route path="/informes/obra" element={<InformeObra />} />
               </Route>
             </Route>
 
