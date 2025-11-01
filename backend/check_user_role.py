@@ -3,9 +3,16 @@ import json
 from dotenv import load_dotenv
 import os
 
+# Cargar variables de entorno desde archivo .env
 load_dotenv('../.env')
-username = os.getenv('ADMIN_USERNAME', 'Ari001')
-password = os.getenv('ADMIN_PASSWORD', 'Rius2019')
+
+# Usar variables de entorno sin valores por defecto para evitar credenciales hardcodeadas
+username = os.getenv('ADMIN_USERNAME')
+password = os.getenv('ADMIN_PASSWORD')
+
+if not username or not password:
+    print('❌ Error: ADMIN_USERNAME y ADMIN_PASSWORD deben estar definidos en las variables de entorno')
+    exit(1)
 
 login_response = requests.post('http://localhost:8000/api/v1/auth/login/json', 
                               json={'username': username, 'password': password})
