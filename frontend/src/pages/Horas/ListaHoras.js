@@ -49,873 +49,615 @@ import {
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Constantes para opciones de horas y minutos
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
-
 const ListaHoras = () => {
-  const [usuario, setUsuario] = useState(null);
-  const [obras, setObras] = useState([]);
   const [horas, setHoras] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Estado para la paginación
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  
-  // Obtener año y mes actual
-  const fechaActual = new Date();
-  const mesActual = fechaActual.getMonth(); // 0-11
-  const añoActual = fechaActual.getFullYear();
-  
-  // Estado para filtros
-  const [filtros, setFiltros] = useState({
-    año: new Date().getFullYear(),
-    mes: new Date().getMonth(),
-    busqueda: '',
-    id_obra: '',
-    id_partida: '',
-    chat_id: ''
-  });
-
-  // Estado para el modal de edición
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState(null);
+  const [obras, setObras] = useState([]);
   const [partidas, setPartidas] = useState([]);
   const [trabajadores, setTrabajadores] = useState([]);
-  const [partidaSeleccionada, setPartidaSeleccionada] = useState('');
-  const [obraSeleccionada, setObraSeleccionada] = useState('');
-  const [nombreObra, setNombreObra] = useState('');
-  const [tramos, setTramos] = useState([
-    { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }
-  ]);
-  const [horasTotalesInput, setHorasTotalesInput] = useState('');
-  const [esExtra, setEsExtra] = useState(false);
-  const [tipoExtra, setTipoExtra] = useState('interno');
-  const [descripcionExtra, setDescripcionExtra] = useState('');
-  const [modalError, setModalError] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [totalHoras, setTotalHoras] = useState(0);
+  const [userInfo, setUserInfo] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Estados para filtros
+  const [filtros, setFiltros] = useState({
+    fecha_inicio: '',
+    fecha_fin: '',
+    id_obra: '',
+    id_partida: '',
+    chat_id: '',
+    es_extra: '',
+    busqueda: ''
+  });
+  
+  // Estados para el modal de eliminación
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [horaToDelete, setHoraToDelete] = useState(null);
+  
+  // Estados para filtros avanzados
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filtroTiempo, setFiltroTiempo] = useState('mes_actual'); // 'mes_actual', 'personalizado', 'todo'
 
   useEffect(() => {
-    const cargarHoras = async () => {
+    const initializeData = async () => {
       try {
-        setLoading(true);
-        const user = authService.getCurrentUser();
-        setUsuario(user);
-        // Cargar obras
-        const obrasData = await obrasService.getObras();
-        setObras(obrasData);
+        // Obtener información del usuario
+        const userResponse = await horasService.getUserInfo();
+        setUserInfo(userResponse);
+        setIsAdmin(userResponse.rol === 'admin');
         
-        // Obtener fechas inicio y fin del mes seleccionado
-        const fechaInicio = startOfMonth(new Date(filtros.año, filtros.mes, 1)).toISOString().split('T')[0];
-        const fechaFin = endOfMonth(new Date(filtros.año, filtros.mes, 1)).toISOString().split('T')[0];
-        
-        // Pasar parámetros de fechas al servicio
-        const params = {
-          fecha_inicio: fechaInicio,
-          fecha_fin: fechaFin
-        };
-        
-        // Si es trabajador, filtrar por su chat_id
-        if (user && user.rol === 'trabajador' && user.chat_id) {
-          params.chat_id = user.chat_id;
-        } else if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
-          // Para admin y secretaria, aplicar filtros adicionales si están definidos
-          if (filtros.id_obra) {
-            params.id_obra = filtros.id_obra;
-          }
-          if (filtros.id_partida) {
-            params.id_partida = filtros.id_partida;
-          }
-          if (filtros.chat_id) {
-            params.chat_id = filtros.chat_id;
-          }
+        // Si no es admin, filtrar por su chat_id
+        if (userResponse.rol !== 'admin') {
+          setFiltros(prev => ({ ...prev, chat_id: userResponse.chat_id }));
         }
         
-        const data = await horasService.getHoras(params);
-        setHoras(data);
-        setError('');
-      } catch (err) {
-        console.error('Error al cargar horas:', err);
-        setError('No se pudieron cargar las horas. Por favor, inténtalo de nuevo.');
+        // Cargar datos iniciales
+        await Promise.all([
+          loadObras(),
+          loadTrabajadores()
+        ]);
+        
+        // Establecer filtro de fecha por defecto (mes actual)
+        const now = new Date();
+        const inicioMes = startOfMonth(now);
+        const finMes = endOfMonth(now);
+        
+        const filtrosIniciales = {
+          fecha_inicio: format(inicioMes, 'yyyy-MM-dd'),
+          fecha_fin: format(finMes, 'yyyy-MM-dd'),
+          chat_id: userResponse.rol !== 'admin' ? userResponse.chat_id : ''
+        };
+        
+        setFiltros(prev => ({ ...prev, ...filtrosIniciales }));
+        
+        // Cargar horas con filtros iniciales
+        await loadHoras(filtrosIniciales);
+        
+      } catch (error) {
+        console.error('Error al inicializar:', error);
+        setError('Error al cargar los datos iniciales');
       } finally {
         setLoading(false);
       }
     };
 
-    cargarHoras();
-  }, [filtros.mes, filtros.año, filtros.id_obra, filtros.id_partida, filtros.chat_id]); // Recargar cuando cambien los filtros
-
-  // Cargar datos iniciales
-  useEffect(() => {
-    const cargarDatosIniciales = async () => {
-      try {
-        const user = authService.getCurrentUser();
-        
-        // Si es admin o secretaria, cargar trabajadores
-        if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
-          const trabajadoresData = await trabajadoresService.getTrabajadores();
-          setTrabajadores(trabajadoresData);
-        }
-      } catch (error) {
-        console.error('Error al cargar datos iniciales:', error);
-      }
-    };
-    
-    cargarDatosIniciales();
+    initializeData();
   }, []);
 
-  // Manejar cambio de página
+  const loadHoras = async (filtrosActuales = filtros) => {
+    try {
+      setLoading(true);
+      
+      // Limpiar filtros vacíos
+      const filtrosLimpios = Object.entries(filtrosActuales).reduce((acc, [key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+      
+      const response = await horasService.getHoras({
+        ...filtrosLimpios,
+        page: page + 1,
+        limit: rowsPerPage
+      });
+      
+      if (response && Array.isArray(response.horas)) {
+        setHoras(response.horas);
+        setTotalHoras(response.total || response.horas.length);
+      } else if (Array.isArray(response)) {
+        setHoras(response);
+        setTotalHoras(response.length);
+      } else {
+        setHoras([]);
+        setTotalHoras(0);
+      }
+    } catch (error) {
+      console.error('Error al cargar horas:', error);
+      setError('Error al cargar las horas');
+      setHoras([]);
+      setTotalHoras(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadObras = async () => {
+    try {
+      const response = await obrasService.getObras();
+      setObras(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error('Error al cargar obras:', error);
+    }
+  };
+
+  const loadPartidas = async (idObra) => {
+    if (!idObra) {
+      setPartidas([]);
+      return;
+    }
+    
+    try {
+      const response = await partidasService.getPartidasPorObra(idObra);
+      setPartidas(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error('Error al cargar partidas:', error);
+      setPartidas([]);
+    }
+  };
+
+  const loadTrabajadores = async () => {
+    try {
+      const response = await trabajadoresService.getTrabajadores();
+      setTrabajadores(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error('Error al cargar trabajadores:', error);
+    }
+  };
+
+  const handleFiltroChange = (campo, valor) => {
+    const nuevosFiltros = { ...filtros, [campo]: valor };
+    
+    // Si cambia la obra, limpiar partida y cargar nuevas partidas
+    if (campo === 'id_obra') {
+      nuevosFiltros.id_partida = '';
+      loadPartidas(valor);
+    }
+    
+    setFiltros(nuevosFiltros);
+  };
+
+  const handleFiltroTiempoChange = (nuevoFiltro) => {
+    setFiltroTiempo(nuevoFiltro);
+    
+    const now = new Date();
+    let nuevosFiltros = { ...filtros };
+    
+    switch (nuevoFiltro) {
+      case 'mes_actual':
+        const inicioMes = startOfMonth(now);
+        const finMes = endOfMonth(now);
+        nuevosFiltros.fecha_inicio = format(inicioMes, 'yyyy-MM-dd');
+        nuevosFiltros.fecha_fin = format(finMes, 'yyyy-MM-dd');
+        break;
+      case 'todo':
+        nuevosFiltros.fecha_inicio = '';
+        nuevosFiltros.fecha_fin = '';
+        break;
+      case 'personalizado':
+        // Mantener las fechas actuales
+        break;
+    }
+    
+    setFiltros(nuevosFiltros);
+  };
+
+  const aplicarFiltros = () => {
+    setPage(0); // Resetear a la primera página
+    loadHoras();
+  };
+
+  const limpiarFiltros = () => {
+    const filtrosLimpios = {
+      fecha_inicio: '',
+      fecha_fin: '',
+      id_obra: '',
+      id_partida: '',
+      chat_id: isAdmin ? '' : userInfo?.chat_id || '',
+      es_extra: '',
+      busqueda: ''
+    };
+    
+    setFiltros(filtrosLimpios);
+    setFiltroTiempo('todo');
+    setPartidas([]);
+    setPage(0);
+  };
+
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
 
-  // Manejar cambio de filas por página
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
 
-  // Manejar cambios en filtros
-  const handleFiltroChange = (e) => {
-    const { name, value } = e.target;
-    setFiltros({
-      ...filtros,
-      [name]: value
-    });
-    
-    // Si cambia la obra, cargar las partidas correspondientes
-    if (name === 'id_obra' && value) {
-      cargarPartidasPorObra(value);
-    } else if (name === 'id_obra' && !value) {
-      // Si se deselecciona la obra, limpiar las partidas
-      setPartidas([]);
-      setFiltros(prev => ({
-        ...prev,
-        id_partida: ''
-      }));
-    }
+  const handleDeleteClick = (hora) => {
+    setHoraToDelete(hora);
+    setDeleteDialogOpen(true);
   };
 
-  // Cargar partidas por obra
-  const cargarPartidasPorObra = async (idObra) => {
+  const handleDeleteConfirm = async () => {
+    if (!horaToDelete) return;
+    
     try {
-      const partidasData = await partidasService.getPartidasPorObra(idObra);
-      setPartidas(partidasData);
+      await horasService.deleteHora(horaToDelete.id_movimiento);
+      setDeleteDialogOpen(false);
+      setHoraToDelete(null);
+      loadHoras(); // Recargar la lista
     } catch (error) {
-      console.error('Error al cargar partidas:', error);
+      console.error('Error al eliminar hora:', error);
+      setError('Error al eliminar el registro de horas');
     }
   };
 
-  // Confirmar eliminación
-  const confirmarEliminar = (id) => {
-    // Aquí iría la lógica para mostrar un diálogo de confirmación
-    // Por ahora simplemente mostramos un alert
-    if (window.confirm('¿Estás seguro de que quieres eliminar este registro?')) {
-      eliminarHora(id);
-    }
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setHoraToDelete(null);
   };
 
-  // Abrir el modal de edición
-  const handleOpenEditModal = async (hora) => {
-    setEditingRecord(hora);
-    setPartidaSeleccionada(hora.id_partida ? hora.id_partida.toString() : '');
-    setObraSeleccionada(hora.id_obra ? hora.id_obra.toString() : '');
-    setNombreObra(obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || '');
-    
-    // Convertir el string de horario a tramos
-    const horarios = hora.horario ? hora.horario.split(',') : [];
-    if (horarios.length > 0 && horarios[0]) {
-      const newTramos = horarios.map(horario => {
-        const [ini, fin] = horario.split('-');
-        const [hIni, mIni] = ini.split(':');
-        const [hFin, mFin] = fin.split(':');
-        return { horaInicio: hIni, minutoInicio: mIni, horaFin: hFin, minutoFin: mFin };
-      });
-      setTramos(newTramos);
-    } else {
-      // Valor por defecto si no hay horario
-      setTramos([{ horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
+  // Efecto para recargar cuando cambian page o rowsPerPage
+  useEffect(() => {
+    if (userInfo) {
+      loadHoras();
     }
-    
-    setHorasTotalesInput(hora.horas_totales ? hora.horas_totales.toString() : '0');
-    setEsExtra(hora.es_extra || false);
-    setTipoExtra(hora.tipo_extra || 'interno');
-    setDescripcionExtra(hora.descripcion_extra || '');
-    
+  }, [page, rowsPerPage]);
+
+  const formatearFecha = (fecha) => {
+    if (!fecha) return '-';
     try {
-      // Cargar partidas para la obra seleccionada
-      if (hora.id_obra) {
-        const partidasData = await partidasService.getPartidasPorObra(hora.id_obra);
-        setPartidas(partidasData.filter(p => p.id_obra === hora.id_obra));
-      } else {
-        setPartidas([]);
-      }
+      return format(new Date(fecha), 'dd/MM/yyyy', { locale: es });
     } catch (error) {
-      console.error("Error al cargar partidas:", error);
-      setModalError("No se pudieron cargar las partidas disponibles.");
-      setPartidas([]);
+      return fecha;
     }
-    
-    setEditModalOpen(true);
   };
 
-  // Cerrar el modal de edición
-  const handleCloseEditModal = () => {
-    setEditModalOpen(false);
-    setEditingRecord(null);
-    setModalError('');
-    setEditLoading(false);
-  };
-
-  // Guardar cambios en el registro
-  const handleSaveEdit = async () => {
-    setModalError('');
-    setEditLoading(true);
-    
-    if (!partidaSeleccionada) {
-      setModalError('Por favor, selecciona una partida.');
-      setEditLoading(false);
-      return;
-    }
-    
-    // Construir string de horario a partir de los tramos
-    const horarioString = tramos.map(t => 
-      `${t.horaInicio}:${t.minutoInicio}-${t.horaFin}:${t.minutoFin}`
-    ).join(',');
-    
-    // Calcular horas totales (similar a RegistrarHoras)
-    const totalHoras = calcularTotalHoras();
-    
-    // Validar solapamientos con registros existentes para el mismo día
-    // Obtener todos los registros del mismo día (y mismo trabajador)
-    const registrosMismoDia = horas.filter(h => {
-      // Filtrar por mismo día
-      const horaFecha = h.fecha ? h.fecha.substring(0, 10) : '';
-      const editingFecha = editingRecord.fecha ? editingRecord.fecha.substring(0, 10) : '';
-      const mismoTrabajador = h.chat_id === editingRecord.chat_id;
-      
-      return horaFecha === editingFecha && mismoTrabajador && h.id_movimiento !== editingRecord.id_movimiento;
-    });
-    
-    const validacion = validarSolapamientos(horarioString, registrosMismoDia);
-    if (validacion.solapado) {
-      setModalError(validacion.mensaje);
-      setEditLoading(false);
-      return;
-    }
-    
+  const formatearHora = (hora) => {
+    if (!hora) return '-';
     try {
-      // Payload para enviar al backend (solo campos modificables)
-      const payload = {
-        id_partida: parseInt(partidaSeleccionada),
-        id_obra: parseInt(obraSeleccionada), // Asumiendo que obraSeleccionada es el ID de la obra
-        horario: horarioString,
-        horas_totales: totalHoras,
-        es_extra: esExtra,
-        tipo_extra: esExtra ? tipoExtra : null,
-        descripcion_extra: esExtra ? descripcionExtra : null
-        // NO incluir fecha o chat_id a menos que sean explícitamente modificables
-        // y el backend lo permita.
-      };
-
-      // respuestaDelBackend contendrá el registro actualizado si la API lo devuelve
-      const respuestaDelBackend = await horasService.updateHora(editingRecord.id_movimiento, payload);
-
-      // Construir el objeto para actualizar el estado de la UI.
-      // Lo ideal es usar la respuestaDelBackend si esta contiene el objeto completo y actualizado.
-      // Si no, fusionamos el payload con los datos no modificados del editingRecord.
-      let registroActualizadoParaUI;
-      if (respuestaDelBackend && typeof respuestaDelBackend === 'object') {
-        // Si la API devuelve el objeto completo, podríamos necesitar conciliarlo
-        // con campos que solo existen en el frontend (como nombre_obra, nombre_partida)
-        // o asegurarnos que el backend ya los incluye.
-        // Por simplicidad ahora, asumimos que payload tiene los campos principales y editingRecord el resto.
-        registroActualizadoParaUI = {
-          ...editingRecord, // Mantiene campos como fecha, chat_id, etc.
-          ...payload,       // Sobrescribe con los datos del payload
-          // Aseguramos que los nombres descriptivos se actualicen si los IDs cambiaron:
-          nombre_partida: partidas.find(p => p.id_partida === payload.id_partida)?.nombre_partida || editingRecord.nombre_partida || '',
-          nombre_obra: obras.find(o => o.id_obra === payload.id_obra)?.nombre_obra || editingRecord.nombre_obra || ''
-        };
-      } else {
-        // Fallback si la respuesta no es lo esperado
-        registroActualizadoParaUI = {
-          ...editingRecord,
-          ...payload,
-          nombre_partida: partidas.find(p => p.id_partida === payload.id_partida)?.nombre_partida || editingRecord.nombre_partida || '',
-          nombre_obra: obras.find(o => o.id_obra === payload.id_obra)?.nombre_obra || editingRecord.nombre_obra || ''
-        };
+      // Si es una cadena de tiempo (HH:MM:SS), extraer solo HH:MM
+      if (typeof hora === 'string' && hora.includes(':')) {
+        return hora.substring(0, 5);
       }
-
-      // Actualizar la lista de horas en el estado local
-      setHoras(prevHoras =>
-        prevHoras.map(hora =>
-          hora.id_movimiento === editingRecord.id_movimiento ? registroActualizadoParaUI : hora
-        )
-      );
-      
-      handleCloseEditModal();
-      // Si quieres mostrar algún mensaje de éxito
-      alert('Registro actualizado correctamente');
+      return hora;
     } catch (error) {
-      console.error("Error al actualizar el registro:", error);
-      setModalError(error.response?.data?.detail || 'Error al actualizar el registro');
-    } finally {
-      setEditLoading(false);
+      return hora;
     }
   };
 
-  // Funciones para gestionar tramos (similares a RegistrarHoras)
-  const handleTramoChange = (index, field, value) => {
-    setTramos(prev => prev.map((tramo, i) => i === index ? { ...tramo, [field]: value } : tramo));
-  };
-  
-  const handleAddTramo = () => {
-    setTramos(prev => [...prev, { horaInicio: '08', minutoInicio: '00', horaFin: '17', minutoFin: '00' }]);
-  };
-  
-  const handleRemoveTramo = (index) => {
-    if (tramos.length === 1) return; // No permitir menos de un tramo
-    setTramos(prev => prev.filter((_, i) => i !== index));
-  };
-  
-  // Calcular total de horas de todos los tramos
-  const calcularTotalHoras = () => {
-    let total = 0;
-    for (const tramo of tramos) {
-      const hIni = parseInt(tramo.horaInicio);
-      const mIni = parseInt(tramo.minutoInicio);
-      const hFin = parseInt(tramo.horaFin);
-      const mFin = parseInt(tramo.minutoFin);
-      let horas = (hFin + mFin / 60) - (hIni + mIni / 60);
-      if (horas < 0) horas += 24;
-      total += horas;
-    }
-    return total;
+  const obtenerNombreObra = (idObra) => {
+    const obra = obras.find(o => o.id_obra === idObra);
+    return obra ? obra.nombre_obra : `Obra ${idObra}`;
   };
 
-  // Calcular el total de horas del mes para la vista
-  const calcularTotalHorasMes = () => {
-    return horas.reduce((total, hora) => total + parseFloat(hora.horas_totales), 0).toFixed(2);
+  const obtenerNombreTrabajador = (chatId) => {
+    const trabajador = trabajadores.find(t => t.chat_id === chatId);
+    return trabajador ? trabajador.nombre : chatId;
   };
 
-  // Función para validar tramos solapados
-  const validarSolapamientos = (horarioNuevo, registrosExistentes) => {
-    // Convertir el nuevo horario en un array de objetos con hora inicio y fin en minutos
-    const nuevosTramos = horarioNuevo.split(',').map(tramo => {
-      const [inicio, fin] = tramo.split('-');
-      const [horaInicio, minInicio] = inicio.split(':').map(Number);
-      const [horaFin, minFin] = fin.split(':').map(Number);
-      
-      return {
-        inicioMinutos: horaInicio * 60 + minInicio,
-        finMinutos: horaFin * 60 + minFin
-      };
-    });
-    
-    // Comprobar solapamiento con cada registro existente
-    for (const registro of registrosExistentes) {
-      // Si el registro es el que estamos editando, lo saltamos
-      if (editingRecord && registro.id_movimiento === editingRecord.id_movimiento) {
-        continue;
-      }
-      
-      // Convertir cada horario existente en tramos de minutos
-      const tramosExistentes = registro.horario ? registro.horario.split(',').map(tramo => {
-        const [inicio, fin] = tramo.split('-');
-        const [horaInicio, minInicio] = inicio.split(':').map(Number);
-        const [horaFin, minFin] = fin.split(':').map(Number);
-        
-        return {
-          inicioMinutos: horaInicio * 60 + minInicio,
-          finMinutos: horaFin * 60 + minFin,
-          obra: registro.id_obra,
-          partida: registro.id_partida
-        };
-      }) : [];
-      
-      // Comprobar si hay solapamiento entre tramos
-      for (const tramoNuevo of nuevosTramos) {
-        for (const tramoExistente of tramosExistentes) {
-          // Hay solapamiento si el inicio del nuevo es menor que el fin del existente Y
-          // el fin del nuevo es mayor que el inicio del existente
-          if (tramoNuevo.inicioMinutos < tramoExistente.finMinutos && 
-              tramoNuevo.finMinutos > tramoExistente.inicioMinutos) {
-            return {
-              solapado: true,
-              mensaje: `El horario se solapa con otro registro existente (${registro.horario}) en la obra "${obras.find(o => o.id_obra === registro.id_obra)?.nombre_obra || 'Desconocida'}"`
-            };
-          }
-        }
-      }
-    }
-    
-    return { solapado: false };
-  };
-
-  // Eliminar hora
-  const eliminarHora = async (id) => {
-    try {
-      await horasService.deleteHora(id);
-      // Actualizar la lista después de eliminar
-      setHoras(horas.filter(hora => hora.id_movimiento !== id));
-      alert('Registro eliminado con éxito');
-    } catch (err) {
-      console.error('Error al eliminar hora:', err);
-      alert('Error al eliminar el registro');
-    }
-  };
-
-  // Formatear fecha
-  const formatearFecha = (fechaStr) => {
-    try {
-      const fecha = new Date(fechaStr);
-      return format(fecha, 'dd MMM yyyy', { locale: es });
-    } catch (error) {
-      return fechaStr || 'Fecha no disponible';
-    }
-  };
-
-  // Generar array de meses
-  const meses = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ];
-  
-  // Generar array de años (desde 2020 hasta el año actual)
-  const años = Array.from(
-    { length: añoActual - 2020 + 1 },
-    (_, i) => añoActual - i
-  );
+  if (loading && horas.length === 0) {
+    return (
+      <Layout>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+          <CircularProgress />
+        </Box>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <Box className="pb-6">
-        <Box className="flex justify-between items-center mb-6">
-          <Typography variant="h4" component="h1" className="font-bold text-gray-800">
-            Mis Horas
+      <Box sx={{ p: 3 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" component="h1">
+            <FaCalendarAlt style={{ marginRight: '10px', color: '#1976d2' }} />
+            Lista de Horas
           </Typography>
-          {!loading && horas.length > 0 && (
-            <Paper elevation={2} sx={{ p: 2, display: 'inline-flex', alignItems: 'center' }}>
-              <Typography variant="h6" color="primary">
-                Total Horas {meses[filtros.mes]}: <strong>{calcularTotalHorasMes()}</strong>
-              </Typography>
-            </Paper>
-          )}
           <Button
             component={Link}
             to="/horas/registrar"
             variant="contained"
-            color="primary"
             startIcon={<FaPlus />}
+            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}
           >
             Registrar Horas
           </Button>
         </Box>
 
         {error && (
-          <Alert severity="error" className="mb-6">
+          <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
         {/* Filtros */}
-        <Paper elevation={2} className="p-4 mb-6">
-          <Box className="flex flex-col md:flex-row gap-4">
-            <Box className="flex-1">
-              <Box className="flex items-center">
-                <FaSearch className="text-gray-400 mr-2" />
-                <TextField
-                  label="Buscar"
-                  variant="outlined"
-                  fullWidth
-                  size="small"
-                  name="busqueda"
-                  value={filtros.busqueda}
-                  onChange={handleFiltroChange}
-                  placeholder="Buscar..."
-                />
-              </Box>
-            </Box>
-            
-            <Box className="flex gap-4">
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel>Mes</InputLabel>
-                <Select
-                  name="mes"
-                  value={filtros.mes}
-                  onChange={handleFiltroChange}
-                  label="Mes"
-                >
-                  {meses.map((mes, index) => (
-                    <MenuItem key={index} value={index}>
-                      {mes}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              <FormControl size="small" sx={{ minWidth: 100 }}>
-                <InputLabel>Año</InputLabel>
-                <Select
-                  name="año"
-                  value={filtros.año}
-                  onChange={handleFiltroChange}
-                  label="Año"
-                >
-                  {años.map((año) => (
-                    <MenuItem key={año} value={año}>
-                      {año}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              {/* Filtros adicionales para admin y secretaria */}
-              {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
-                <>
-                  <FormControl size="small" sx={{ minWidth: 200 }}>
-                    <InputLabel>Obra</InputLabel>
-                    <Select
-                      name="id_obra"
-                      value={filtros.id_obra}
-                      onChange={handleFiltroChange}
-                      label="Obra"
-                    >
-                      <MenuItem value="">Todas las obras</MenuItem>
-                      {obras.map((obra) => (
-                        <MenuItem key={obra.id_obra} value={obra.id_obra.toString()}>
-                          {obra.nombre_obra}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  
-                  <FormControl size="small" sx={{ minWidth: 200 }} disabled={!filtros.id_obra}>
-                    <InputLabel>Partida</InputLabel>
-                    <Select
-                      name="id_partida"
-                      value={filtros.id_partida}
-                      onChange={handleFiltroChange}
-                      label="Partida"
-                    >
-                      <MenuItem value="">Todas las partidas</MenuItem>
-                      {partidas.map((partida) => (
-                        <MenuItem key={partida.id_partida} value={partida.id_partida.toString()}>
-                          {partida.nombre_partida}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  
-                  <FormControl size="small" sx={{ minWidth: 200 }}>
-                    <InputLabel>Trabajador</InputLabel>
-                    <Select
-                      name="chat_id"
-                      value={filtros.chat_id}
-                      onChange={handleFiltroChange}
-                      label="Trabajador"
-                    >
-                      <MenuItem value="">Todos los trabajadores</MenuItem>
-                      {trabajadores.map((trabajador) => (
-                        <MenuItem key={trabajador.chat_id} value={trabajador.chat_id.toString()}>
-                          {trabajador.nombre}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </>
-              )}
-            </Box>
-          </Box>
-        </Paper>
-
-        {/* Tabla de horas */}
-        <Paper elevation={3} className="overflow-hidden">
-          {loading ? (
-            <Box className="flex justify-center items-center p-10">
-              <CircularProgress />
-            </Box>
-          ) : horas.length > 0 ? (
-            <>
-              <TableContainer>
-                <Table aria-label="tabla de horas">
-                  <TableHead className="bg-gray-100">
-                    <TableRow>
-                      <TableCell className="font-bold">Fecha</TableCell>
-                      {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
-                        <TableCell className="font-bold">Trabajador</TableCell>
-                      )}
-                      <TableCell className="font-bold">Obra</TableCell>
-                      <TableCell className="font-bold">Partida</TableCell>
-                      <TableCell className="font-bold">Horas</TableCell>
-                      <TableCell className="font-bold">Extra</TableCell>
-                      <TableCell className="font-bold">Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {horas
-                      .filter(hora => {
-                        if (!filtros.busqueda) return true;
-                        const busquedaMinuscula = filtros.busqueda.toLowerCase();
-                        const nombreObra = obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || '';
-                        const nombrePartida = hora.nombre_partida || '';
-                        const nombreTrabajador = hora.nombre_trabajador || '';
-                        return nombreObra.toLowerCase().includes(busquedaMinuscula) || 
-                               nombrePartida.toLowerCase().includes(busquedaMinuscula) ||
-                               nombreTrabajador.toLowerCase().includes(busquedaMinuscula);
-                      })
-                      .slice(page * rowsPerPage, rowsPerPage === -1 ? horas.length : page * rowsPerPage + rowsPerPage)
-                      .map((hora) => (
-                        <TableRow key={hora.id_movimiento} hover>
-                          <TableCell>{formatearFecha(hora.fecha)}</TableCell>
-                          {usuario && (usuario.rol === 'admin' || usuario.rol === 'secretaria') && (
-                            <TableCell>{hora.nombre_trabajador || hora.chat_id || 'N/A'}</TableCell>
-                          )}
-                          <TableCell>{obras.find(o => o.id_obra === hora.id_obra)?.nombre_obra || 'N/A'}</TableCell>
-                          <TableCell>{hora.nombre_partida || 'N/A'}</TableCell>
-                          <TableCell>{typeof hora.horas_totales === 'number' ? hora.horas_totales.toFixed(2) : parseFloat(hora.horas_totales || 0).toFixed(2)}</TableCell>
-                          <TableCell>
-                            {hora.es_extra ? (
-                              <Chip 
-                                label={hora.tipo_extra === 'interno' ? 'Int' : 'Ext'}
-                                color="warning"
-                                size="small"
-                              />
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Box className="flex gap-1">
-                              <IconButton 
-                                onClick={() => handleOpenEditModal(hora)}
-                                color="secondary"
-                                size="small"
-                              >
-                                <FaEdit />
-                              </IconButton>
-                              <IconButton 
-                                onClick={() => confirmarEliminar(hora.id_movimiento)}
-                                color="error"
-                                size="small"
-                              >
-                                <FaTrash />
-                              </IconButton>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                rowsPerPageOptions={[5, 10, 25, { label: 'Todas', value: -1 }]}
-                component="div"
-                count={horas.length}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                labelRowsPerPage="Filas por página"
-              />
-            </>
-          ) : (
-            <Box className="p-10 text-center">
-              <Typography variant="h6" className="text-gray-500 mb-4">
-                No se encontraron registros de horas para {meses[filtros.mes]} {filtros.año}
-              </Typography>
-              <Button
-                component={Link}
-                to="/horas/registrar"
-                variant="contained"
-                color="primary"
-                startIcon={<FaPlus />}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Filtros
+          </Typography>
+          
+          {/* Filtro de tiempo rápido */}
+          <Box mb={2}>
+            <FormControl component="fieldset">
+              <RadioGroup
+                row
+                value={filtroTiempo}
+                onChange={(e) => handleFiltroTiempoChange(e.target.value)}
               >
-                Registrar Horas
-              </Button>
-            </Box>
-          )}
-        </Paper>
-        
-        {/* Modal de edición */}
-        <Dialog 
-          open={editModalOpen} 
-          onClose={handleCloseEditModal}
-          fullWidth
-          maxWidth="md"
-        >
-          <DialogTitle>Editar Registro de Horas</DialogTitle>
-          <DialogContent>
-            {modalError && <Alert severity="error" sx={{ mb: 2 }}>{modalError}</Alert>}
-            
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              {/* Obra (solo lectura) */}
-              <Grid item xs={12} md={6}>
-                <TextField
+                <FormControlLabel value="mes_actual" control={<Radio />} label="Mes actual" />
+                <FormControlLabel value="personalizado" control={<Radio />} label="Fechas personalizadas" />
+                <FormControlLabel value="todo" control={<Radio />} label="Todas las fechas" />
+              </RadioGroup>
+            </FormControl>
+          </Box>
+
+          <Grid container spacing={2} alignItems="center">
+            {/* Fechas */}
+            {filtroTiempo === 'personalizado' && (
+              <>
+                <Grid item xs={12} sm={6} md={2}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha inicio"
+                    value={filtros.fecha_inicio}
+                    onChange={(e) => handleFiltroChange('fecha_inicio', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Fecha fin"
+                    value={filtros.fecha_fin}
+                    onChange={(e) => handleFiltroChange('fecha_fin', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                  />
+                </Grid>
+              </>
+            )}
+
+            {/* Búsqueda */}
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                placeholder="Buscar..."
+                value={filtros.busqueda}
+                onChange={(e) => handleFiltroChange('busqueda', e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FaSearch />
+                    </InputAdornment>
+                  ),
+                }}
+                size="small"
+              />
+            </Grid>
+
+            {/* Obra */}
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Obra</InputLabel>
+                <Select
+                  value={filtros.id_obra}
                   label="Obra"
-                  value={nombreObra}
-                  InputProps={{ readOnly: true }}
-                  fullWidth
-                />
-              </Grid>
-              
-              {/* Partida */}
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Partida</InputLabel>
+                  onChange={(e) => handleFiltroChange('id_obra', e.target.value)}
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {obras.map((obra) => (
+                    <MenuItem key={obra.id_obra} value={obra.id_obra}>
+                      {obra.nombre_obra}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Partida */}
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Partida</InputLabel>
+                <Select
+                  value={filtros.id_partida}
+                  label="Partida"
+                  onChange={(e) => handleFiltroChange('id_partida', e.target.value)}
+                  disabled={!filtros.id_obra}
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {partidas.map((partida) => (
+                    <MenuItem key={partida.id_partida} value={partida.id_partida}>
+                      {partida.nombre_partida}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Trabajador (solo para admin) */}
+            {isAdmin && (
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Trabajador</InputLabel>
                   <Select
-                    value={partidaSeleccionada}
-                    label="Partida"
-                    onChange={(e) => setPartidaSeleccionada(e.target.value)}
+                    value={filtros.chat_id}
+                    label="Trabajador"
+                    onChange={(e) => handleFiltroChange('chat_id', e.target.value)}
                   >
-                    <MenuItem value="">Selecciona una partida</MenuItem>
-                    {partidas.map(p => (
-                      <MenuItem key={p.id_partida} value={p.id_partida.toString()}>
-                        {p.nombre_partida}
+                    <MenuItem value="">Todos</MenuItem>
+                    {trabajadores.map((trabajador) => (
+                      <MenuItem key={trabajador.chat_id} value={trabajador.chat_id}>
+                        {trabajador.nombre}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
-              
-              {/* Tramos horarios */}
-              <Grid item xs={12}>
-                <Typography variant="subtitle1" gutterBottom>Tramos horarios</Typography>
-                {tramos.map((tramo, idx) => (
-                  <Box 
-                    key={idx} 
-                    display="flex" 
-                    flexDirection="row" 
-                    gap={1} 
-                    alignItems="center" 
-                    mb={2}
-                    sx={{
-                      p: 1,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      backgroundColor: idx % 2 === 0 ? 'background.default' : 'background.paper'
-                    }}
-                  >
-                    {/* Tramo inicio */}
-                    <Box display="flex" gap={1} flex={1}>
-                      <FormControl required>
-                        <InputLabel>Hora inicio</InputLabel>
-                        <Select
-                          value={tramo.horaInicio}
-                          label="Hora inicio"
-                          onChange={e => handleTramoChange(idx, 'horaInicio', e.target.value)}
-                        >
-                          {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                      <FormControl required>
-                        <InputLabel>Minuto inicio</InputLabel>
-                        <Select
-                          value={tramo.minutoInicio}
-                          label="Minuto inicio"
-                          onChange={e => handleTramoChange(idx, 'minutoInicio', e.target.value)}
-                        >
-                          {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Box>
-                    
-                    {/* Separador */}
-                    <Box display="flex" alignItems="center" justifyContent="center" py={1}>
-                      <Typography>-</Typography>
-                    </Box>
-                    
-                    {/* Tramo fin */}
-                    <Box display="flex" gap={1} flex={1}>
-                      <FormControl required>
-                        <InputLabel>Hora fin</InputLabel>
-                        <Select
-                          value={tramo.horaFin}
-                          label="Hora fin"
-                          onChange={e => handleTramoChange(idx, 'horaFin', e.target.value)}
-                        >
-                          {HOUR_OPTIONS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                      <FormControl required>
-                        <InputLabel>Minuto fin</InputLabel>
-                        <Select
-                          value={tramo.minutoFin}
-                          label="Minuto fin"
-                          onChange={e => handleTramoChange(idx, 'minutoFin', e.target.value)}
-                        >
-                          {MINUTE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Box>
-                    
-                    {/* Botón eliminar */}
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      size="small"
-                      onClick={() => handleRemoveTramo(idx)}
-                      disabled={tramos.length === 1}
-                      sx={{ minWidth: 0, px: 1 }}
-                    >
-                      X
-                    </Button>
-                  </Box>
-                ))}
-                <Button variant="outlined" size="small" onClick={handleAddTramo} sx={{ mt: 1 }}>Añadir tramo</Button>
-                <Typography mt={2} fontWeight={600}>Total de horas: {calcularTotalHoras().toFixed(2)}</Typography>
-              </Grid>
-              
-              {/* Es extra */}
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={<Switch checked={esExtra} onChange={(e) => setEsExtra(e.target.checked)} />}
-                  label="¿Es extra?"
+            )}
+          </Grid>
+
+          {/* Filtros avanzados */}
+          <Box mt={2}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAdvancedFilters}
+                  onChange={(e) => setShowAdvancedFilters(e.target.checked)}
                 />
+              }
+              label="Filtros avanzados"
+            />
+          </Box>
+
+          {showAdvancedFilters && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Tipo de horas</InputLabel>
+                  <Select
+                    value={filtros.es_extra}
+                    label="Tipo de horas"
+                    onChange={(e) => handleFiltroChange('es_extra', e.target.value)}
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    <MenuItem value="false">Normales</MenuItem>
+                    <MenuItem value="true">Extras</MenuItem>
+                  </Select>
+                </FormControl>
               </Grid>
-              
-              {/* Tipo de extra y descripción (solo si es extra) */}
-              {esExtra && (
-                <>
-                  <Grid item xs={12} md={6}>
-                    <FormControl component="fieldset">
-                      <RadioGroup
-                        row
-                        value={tipoExtra}
-                        onChange={(e) => setTipoExtra(e.target.value)}
-                      >
-                        <FormControlLabel value="interno" control={<Radio />} label="Interno" />
-                        <FormControlLabel value="externo" control={<Radio />} label="Externo" />
-                      </RadioGroup>
-                    </FormControl>
-                  </Grid>
-                  
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Descripción del extra"
-                      value={descripcionExtra}
-                      onChange={(e) => setDescripcionExtra(e.target.value)}
-                      fullWidth
-                      required={esExtra}
-                    />
-                  </Grid>
-                </>
-              )}
             </Grid>
+          )}
+
+          {/* Botones */}
+          <Box mt={2} display="flex" gap={1}>
+            <Button
+              variant="contained"
+              onClick={aplicarFiltros}
+              startIcon={<FaSearch />}
+            >
+              Aplicar Filtros
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={limpiarFiltros}
+            >
+              Limpiar
+            </Button>
+          </Box>
+        </Paper>
+
+        {/* Tabla */}
+        <Paper>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Fecha</TableCell>
+                  <TableCell>Trabajador</TableCell>
+                  <TableCell>Obra</TableCell>
+                  <TableCell>Partida</TableCell>
+                  <TableCell>Inicio</TableCell>
+                  <TableCell>Fin</TableCell>
+                  <TableCell>Horas</TableCell>
+                  <TableCell>Tipo</TableCell>
+                  <TableCell>Acciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">
+                      <CircularProgress size={24} />
+                    </TableCell>
+                  </TableRow>
+                ) : horas.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">
+                      No se encontraron registros
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  horas.map((hora) => (
+                    <TableRow key={hora.id_movimiento}>
+                      <TableCell>{formatearFecha(hora.fecha)}</TableCell>
+                      <TableCell>{obtenerNombreTrabajador(hora.chat_id)}</TableCell>
+                      <TableCell>{obtenerNombreObra(hora.id_obra)}</TableCell>
+                      <TableCell>{hora.nombre_partida || '-'}</TableCell>
+                      <TableCell>{formatearHora(hora.hora_inicio)}</TableCell>
+                      <TableCell>{formatearHora(hora.hora_fin)}</TableCell>
+                      <TableCell>{hora.horas_totales || '-'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={hora.es_extra ? 'Extra' : 'Normal'}
+                          color={hora.es_extra ? 'warning' : 'primary'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box display="flex" gap={1}>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            title="Ver detalles"
+                          >
+                            <FaEye />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            title="Editar"
+                          >
+                            <FaEdit />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            title="Eliminar"
+                            onClick={() => handleDeleteClick(hora)}
+                          >
+                            <FaTrash />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            component="div"
+            count={totalHoras}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            labelRowsPerPage="Filas por página:"
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+          />
+        </Paper>
+
+        {/* Dialog de confirmación de eliminación */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={handleDeleteCancel}
+        >
+          <DialogTitle>Confirmar eliminación</DialogTitle>
+          <DialogContent>
+            <Typography>
+              ¿Estás seguro de que quieres eliminar este registro de horas?
+              {horaToDelete && (
+                <Box mt={1}>
+                  <strong>Fecha:</strong> {formatearFecha(horaToDelete.fecha)}<br/>
+                  <strong>Trabajador:</strong> {obtenerNombreTrabajador(horaToDelete.chat_id)}<br/>
+                  <strong>Horas:</strong> {horaToDelete.horas_totales}
+                </Box>
+              )}
+            </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseEditModal}>Cancelar</Button>
-            <Button 
-              onClick={handleSaveEdit}
-              variant="contained" 
-              color="primary"
-              disabled={editLoading}
-            >
-              {editLoading ? 'Guardando...' : 'Guardar Cambios'}
+            <Button onClick={handleDeleteCancel}>Cancelar</Button>
+            <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+              Eliminar
             </Button>
           </DialogActions>
         </Dialog>
@@ -924,4 +666,4 @@ const ListaHoras = () => {
   );
 };
 
-export default ListaHoras; 
+export default ListaHoras;
