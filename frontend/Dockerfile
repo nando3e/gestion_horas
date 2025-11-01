@@ -33,6 +33,9 @@ FROM nginx:alpine
 # Instalar envsubst (viene con gettext)
 RUN apk add --no-cache gettext
 
+# Eliminar configuración por defecto de nginx
+RUN rm -f /etc/nginx/conf.d/default.conf
+
 # Copiar los archivos construidos desde la etapa de 'build' a la carpeta de Nginx
 COPY --from=build /app/build /usr/share/nginx/html
 
@@ -40,7 +43,10 @@ COPY --from=build /app/build /usr/share/nginx/html
 RUN mkdir -p /etc/nginx/templates
 
 # Copiar el template de configuración de Nginx
-COPY frontend/nginx.conf.template /etc/nginx/templates/
+COPY frontend/nginx.conf.template /etc/nginx/templates/nginx.conf.template
+
+# También copiar nginx.conf como fallback (sin variables, para desarrollo/simplicidad)
+COPY frontend/nginx.conf /etc/nginx/conf.d/nginx.conf.backup
 
 # Copiar el script de entrada
 COPY frontend/docker-entrypoint.sh /docker-entrypoint.sh
