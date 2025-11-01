@@ -48,190 +48,236 @@ const InformeTrabajador = () => {
   const [ordenFecha, setOrdenFecha] = useState('desc'); // 'asc' o 'desc'
 
   // Datos agrupados
-  const [datosAgrupados, setDatosAgrupados] = useState([]);
+  const [datosAgrupados, setDatosAgrupados] = useState({});
+  const [totalHoras, setTotalHoras] = useState(0);
+  const [resumenObras, setResumenObras] = useState({});
 
-  useEffect(() => {
-    cargarDatosIniciales();
-  }, []);
-
-  useEffect(() => {
-    if (trabajadorSeleccionado && mesesSeleccionados.length > 0) {
-      cargarHoras();
-    }
-  }, [trabajadorSeleccionado, mesesSeleccionados, añoSeleccionado]);
-
-  useEffect(() => {
-    // Reordenar cuando cambie el orden
-    if (horas.length > 0) {
-      agruparHorasPorDia(horas);
-    }
-  }, [ordenFecha]);
-
-  const cargarDatosIniciales = async () => {
-    try {
-      const [trabajadoresData, obrasData] = await Promise.all([
-        trabajadoresService.getTrabajadores(),
-        obrasService.getObras()
-      ]);
-      setTrabajadores(trabajadoresData);
-      setObras(obrasData);
-    } catch (error) {
-      console.error('Error al cargar datos iniciales:', error);
-      setError('Error al cargar los datos iniciales');
-    }
-  };
-
-  const cargarHoras = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Obtener todas las horas de los meses seleccionados
-      const todasLasHoras = [];
-      
-      for (const mes of mesesSeleccionados) {
-        // Calcular primer día del mes (evitando problemas de zona horaria)
-        const inicioMes = new Date(añoSeleccionado, mes, 1);
-        const fechaInicio = `${inicioMes.getFullYear()}-${(inicioMes.getMonth() + 1).toString().padStart(2, '0')}-${inicioMes.getDate().toString().padStart(2, '0')}`;
-        
-        // Calcular último día del mes (evitando problemas de zona horaria)
-        const finMes = new Date(añoSeleccionado, mes + 1, 0);
-        const fechaFin = `${finMes.getFullYear()}-${(finMes.getMonth() + 1).toString().padStart(2, '0')}-${finMes.getDate().toString().padStart(2, '0')}`;
-        
-        const horasDelMes = await horasService.getHoras({
-          chat_id: trabajadorSeleccionado,
-          fecha_inicio: fechaInicio,
-          fecha_fin: fechaFin
-        });
-        
-        todasLasHoras.push(...horasDelMes);
-      }
-      
-      setHoras(todasLasHoras);
-      agruparHorasPorDia(todasLasHoras);
-      
-    } catch (error) {
-      console.error('Error al cargar horas:', error);
-      setError('Error al cargar las horas del trabajador');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const agruparHorasPorDia = (horasData) => {
-    // Agrupar por fecha
-    const agrupado = horasData.reduce((acc, hora) => {
-      const fecha = hora.fecha;
-      if (!acc[fecha]) {
-        acc[fecha] = [];
-      }
-      acc[fecha].push(hora);
-      return acc;
-    }, {});
-
-    // Convertir a array y ordenar por fecha según preferencia
-    const resultado = Object.entries(agrupado)
-      .map(([fecha, registros]) => ({
-        fecha,
-        registros: registros.sort((a, b) => {
-          // Ordenar por hora de inicio
-          const horaA = a.hora_inicio || '00:00';
-          const horaB = b.hora_inicio || '00:00';
-          return horaA.localeCompare(horaB);
-        }),
-        totalHoras: registros.reduce((sum, reg) => sum + parseFloat(reg.horas_totales || 0), 0)
-      }))
-      .sort((a, b) => {
-        const fechaA = new Date(a.fecha);
-        const fechaB = new Date(b.fecha);
-        return ordenFecha === 'desc' ? fechaB - fechaA : fechaA - fechaB;
-      });
-
-    setDatosAgrupados(resultado);
-  };
-
-  const formatearFecha = (fechaStr) => {
-    try {
-      const fecha = new Date(fechaStr);
-      return format(fecha, 'EEEE, dd MMMM yyyy', { locale: es });
-    } catch (error) {
-      return fechaStr;
-    }
-  };
-
-  const formatearHorario = (horaInicio, horaFin) => {
-    if (!horaInicio) return '-';
-    const inicio = horaInicio.substring(0, 5);
-    const fin = horaFin ? horaFin.substring(0, 5) : '';
-    return fin ? `${inicio}-${fin}` : inicio;
-  };
-
-  const obtenerNombreObra = (idObra) => {
-    const obra = obras.find(o => o.id_obra === idObra);
-    return obra ? obra.nombre_obra : 'N/A';
-  };
-
-  const calcularTotalGeneral = () => {
-    return datosAgrupados.reduce((total, dia) => total + dia.totalHoras, 0);
-  };
-
-  const eliminarMes = (mesAEliminar) => {
-    const nuevosMeses = mesesSeleccionados.filter(mes => mes !== mesAEliminar);
-    setMesesSeleccionados(nuevosMeses);
-  };
-
-  // Generar opciones de meses
   const meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
-  // Generar años (desde 2020 hasta año actual + 1)
-  const añoActual = new Date().getFullYear();
-  const años = Array.from({ length: añoActual - 2020 + 2 }, (_, i) => 2020 + i);
+  useEffect(() => {
+    loadTrabajadores();
+    loadObras();
+  }, []);
+
+  const loadTrabajadores = async () => {
+    try {
+      const response = await trabajadoresService.getTrabajadores();
+      setTrabajadores(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error('Error al cargar trabajadores:', error);
+      setError('Error al cargar los trabajadores');
+    }
+  };
+
+  const loadObras = async () => {
+    try {
+      const response = await obrasService.getObras();
+      setObras(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error('Error al cargar obras:', error);
+    }
+  };
+
+  const loadHoras = async () => {
+    if (!trabajadorSeleccionado) {
+      setError('Selecciona un trabajador para generar el informe');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    
+    try {
+      const filtros = {
+        chat_id: trabajadorSeleccionado
+      };
+      
+      // Aplicar filtros de fecha si hay meses y año seleccionados
+      if (mesesSeleccionados.length > 0 && añoSeleccionado) {
+        // Para simplificar, tomamos el primer mes seleccionado
+        const mes = mesesSeleccionados[0];
+        
+        const fechaInicio = new Date(añoSeleccionado, mes, 1);
+        const fechaFin = new Date(añoSeleccionado, mes + 1, 0);
+        
+        filtros.fecha_inicio = format(fechaInicio, 'yyyy-MM-dd');
+        filtros.fecha_fin = format(fechaFin, 'yyyy-MM-dd');
+      }
+      
+      const response = await horasService.getHoras(filtros);
+      const horasData = Array.isArray(response) ? response : (response.horas || []);
+      
+      setHoras(horasData);
+      procesarDatos(horasData);
+      
+    } catch (error) {
+      console.error('Error al cargar horas:', error);
+      setError('Error al cargar los datos del informe');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const procesarDatos = (horasData) => {
+    const agrupados = {};
+    const resumenPorObra = {};
+    let total = 0;
+    
+    horasData.forEach(hora => {
+      const fecha = hora.fecha;
+      const obraId = hora.id_obra;
+      const obraNombre = obtenerNombreObra(obraId);
+      const partida = hora.nombre_partida || 'Sin partida';
+      const horas = parseFloat(hora.horas_totales) || 0;
+      const esExtra = hora.es_extra;
+      
+      // Agrupar por fecha
+      if (!agrupados[fecha]) {
+        agrupados[fecha] = [];
+      }
+      
+      agrupados[fecha].push({
+        ...hora,
+        obra_nombre: obraNombre,
+        horas_numericas: horas
+      });
+      
+      // Resumen por obra
+      if (!resumenPorObra[obraNombre]) {
+        resumenPorObra[obraNombre] = {
+          total: 0,
+          normales: 0,
+          extras: 0,
+          registros: 0
+        };
+      }
+      
+      resumenPorObra[obraNombre].total += horas;
+      resumenPorObra[obraNombre].registros += 1;
+      
+      if (esExtra) {
+        resumenPorObra[obraNombre].extras += horas;
+      } else {
+        resumenPorObra[obraNombre].normales += horas;
+      }
+      
+      total += horas;
+    });
+    
+    setDatosAgrupados(agrupados);
+    setResumenObras(resumenPorObra);
+    setTotalHoras(total);
+  };
+
+  const generarInforme = () => {
+    loadHoras();
+  };
+
+  const limpiarFiltros = () => {
+    setTrabajadorSeleccionado('');
+    setMesesSeleccionados([]);
+    setAñoSeleccionado(new Date().getFullYear());
+    setHoras([]);
+    setDatosAgrupados({});
+    setResumenObras({});
+    setTotalHoras(0);
+    setError('');
+  };
+
+  const obtenerNombreTrabajador = () => {
+    const trabajador = trabajadores.find(t => t.chat_id === trabajadorSeleccionado);
+    return trabajador ? trabajador.nombre : 'Trabajador no encontrado';
+  };
+
+  const obtenerNombreObra = (idObra) => {
+    const obra = obras.find(o => o.id_obra === idObra);
+    return obra ? obra.nombre_obra : `Obra ${idObra}`;
+  };
+
+  const formatearFecha = (fecha) => {
+    try {
+      return format(new Date(fecha), 'dd/MM/yyyy', { locale: es });
+    } catch (error) {
+      return fecha;
+    }
+  };
+
+  const formatearHora = (hora) => {
+    if (!hora) return '-';
+    try {
+      if (typeof hora === 'string' && hora.includes(':')) {
+        return hora.substring(0, 5);
+      }
+      return hora;
+    } catch (error) {
+      return hora;
+    }
+  };
+
+  const getFechasOrdenadas = () => {
+    const fechas = Object.keys(datosAgrupados);
+    return fechas.sort((a, b) => {
+      const fechaA = new Date(a);
+      const fechaB = new Date(b);
+      return ordenFecha === 'asc' ? fechaA - fechaB : fechaB - fechaA;
+    });
+  };
+
+  const toggleOrdenFecha = () => {
+    setOrdenFecha(ordenFecha === 'asc' ? 'desc' : 'asc');
+  };
 
   return (
     <Layout>
-      <Box className="pb-6">
+      <Box sx={{ p: 3 }}>
         {/* Breadcrumbs */}
-        <Breadcrumbs className="mb-4">
-          <Link to="/informes" className="text-primary-600 hover:text-primary-800">
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link to="/informes" style={{ textDecoration: 'none', color: '#1976d2' }}>
             Informes
           </Link>
-          <Typography color="text.primary">Por Trabajador</Typography>
+          <Typography color="text.primary">Informe por Trabajador</Typography>
         </Breadcrumbs>
 
-        {/* Header */}
-        <Box className="flex justify-between items-center mb-6">
-          <Box>
-            <Typography variant="h4" component="h1" className="font-bold text-gray-800">
-              Informe por Trabajador
-            </Typography>
-            <Typography variant="subtitle1" className="text-gray-600 mt-1">
-              Detalle de horas trabajadas agrupado por días
-            </Typography>
-          </Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" component="h1">
+            <FaUser style={{ marginRight: '10px', color: '#1976d2' }} />
+            Informe por Trabajador
+          </Typography>
           <Button
             component={Link}
             to="/informes"
             variant="outlined"
             startIcon={<FaArrowLeft />}
           >
-            Volver
+            Volver a Informes
           </Button>
         </Box>
 
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         {/* Filtros */}
-        <Paper elevation={2} className="p-4 mb-6">
-          <Box className="flex flex-col md:flex-row gap-4">
-            <FormControl size="small" sx={{ minWidth: 250 }} required>
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Filtros
+          </Typography>
+          
+          <Box display="flex" flexWrap="wrap" gap={2} alignItems="center">
+            {/* Selección de trabajador */}
+            <FormControl sx={{ minWidth: 200 }}>
               <InputLabel>Trabajador</InputLabel>
               <Select
                 value={trabajadorSeleccionado}
                 label="Trabajador"
                 onChange={(e) => setTrabajadorSeleccionado(e.target.value)}
               >
-                <MenuItem value="">Selecciona un trabajador</MenuItem>
+                <MenuItem value="">Seleccionar trabajador</MenuItem>
                 {trabajadores.map((trabajador) => (
                   <MenuItem key={trabajador.chat_id} value={trabajador.chat_id}>
                     {trabajador.nombre}
@@ -240,14 +286,15 @@ const InformeTrabajador = () => {
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: 120 }}>
+            {/* Selección de año */}
+            <FormControl sx={{ minWidth: 120 }}>
               <InputLabel>Año</InputLabel>
               <Select
                 value={añoSeleccionado}
                 label="Año"
                 onChange={(e) => setAñoSeleccionado(e.target.value)}
               >
-                {años.map((año) => (
+                {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map((año) => (
                   <MenuItem key={año} value={año}>
                     {año}
                   </MenuItem>
@@ -255,29 +302,15 @@ const InformeTrabajador = () => {
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Meses</InputLabel>
+            {/* Selección de mes */}
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Mes</InputLabel>
               <Select
-                multiple
-                value={mesesSeleccionados}
-                label="Meses"
-                onChange={(e) => setMesesSeleccionados(e.target.value)}
-                renderValue={(selected) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map((value) => (
-                      <Chip 
-                        key={value} 
-                        label={meses[value]} 
-                        size="small"
-                        onDelete={() => eliminarMes(value)}
-                        onMouseDown={(event) => {
-                          event.stopPropagation();
-                        }}
-                      />
-                    ))}
-                  </Box>
-                )}
+                value={mesesSeleccionados[0] !== undefined ? mesesSeleccionados[0] : ''}
+                label="Mes"
+                onChange={(e) => setMesesSeleccionados([e.target.value])}
               >
+                <MenuItem value="">Todos</MenuItem>
                 {meses.map((mes, index) => (
                   <MenuItem key={index} value={index}>
                     {mes}
@@ -286,148 +319,178 @@ const InformeTrabajador = () => {
               </Select>
             </FormControl>
 
-            {datosAgrupados.length > 0 && (
-              <Button
-                variant="outlined"
-                startIcon={ordenFecha === 'desc' ? <FaSortAmountDown /> : <FaSortAmountUp />}
-                onClick={() => setOrdenFecha(ordenFecha === 'desc' ? 'asc' : 'desc')}
-                title={`Ordenar fechas ${ordenFecha === 'desc' ? 'ascendente' : 'descendente'}`}
-              >
-                {ordenFecha === 'desc' ? 'Más reciente' : 'Más antiguo'}
-              </Button>
-            )}
+            {/* Botones */}
+            <Button
+              variant="contained"
+              onClick={generarInforme}
+              disabled={!trabajadorSeleccionado || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <FaCalendarAlt />}
+            >
+              {loading ? 'Generando...' : 'Generar Informe'}
+            </Button>
+            
+            <Button
+              variant="outlined"
+              onClick={limpiarFiltros}
+            >
+              Limpiar
+            </Button>
           </Box>
         </Paper>
 
-        {/* Resumen */}
-        {datosAgrupados.length > 0 && (
-          <Paper elevation={2} className="p-4 mb-6 bg-primary-50">
-            <Box className="flex items-center justify-between">
-              <Box className="flex items-center gap-4">
-                <FaUser className="text-primary-600 text-xl" />
-                <Typography variant="h6" className="font-semibold">
-                  {trabajadores.find(t => t.chat_id === trabajadorSeleccionado)?.nombre || 'Trabajador'}
-                </Typography>
-              </Box>
-              <Box className="text-right">
-                <Typography variant="h5" className="font-bold text-primary-700">
-                  {calcularTotalGeneral().toFixed(2)}h
-                </Typography>
-                <Typography variant="body2" className="text-gray-600">
-                  Total período
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
-        )}
-
-        {/* Error */}
-        {error && (
-          <Alert severity="error" className="mb-6">
-            {error}
-          </Alert>
-        )}
-
-        {/* Tabla de resultados */}
-        <Paper elevation={3} className="overflow-hidden">
-          {loading ? (
-            <Box className="flex justify-center items-center p-10">
-              <CircularProgress />
-            </Box>
-          ) : !trabajadorSeleccionado ? (
-            <Box className="p-10 text-center">
-              <FaUser className="text-6xl text-gray-300 mb-4 mx-auto" />
-              <Typography variant="h6" className="text-gray-500 mb-2">
-                Selecciona un trabajador
-              </Typography>
-              <Typography variant="body2" className="text-gray-400">
-                Elige un trabajador y los meses para generar el informe
-              </Typography>
-            </Box>
-          ) : datosAgrupados.length > 0 ? (
+        {/* Resumen por obras */}
+        {Object.keys(resumenObras).length > 0 && (
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Resumen por Obras
+            </Typography>
             <TableContainer>
-              <Table>
-                <TableHead className="bg-gray-100">
+              <Table size="small">
+                <TableHead>
                   <TableRow>
-                    <TableCell className="font-bold">Fecha</TableCell>
-                    <TableCell className="font-bold">Obra</TableCell>
-                    <TableCell className="font-bold">Partida</TableCell>
-                    <TableCell className="font-bold">Horario</TableCell>
-                    <TableCell className="font-bold">Horas</TableCell>
-                    <TableCell className="font-bold">Total Día</TableCell>
+                    <TableCell><strong>Obra</strong></TableCell>
+                    <TableCell align="right"><strong>Horas Normales</strong></TableCell>
+                    <TableCell align="right"><strong>Horas Extras</strong></TableCell>
+                    <TableCell align="right"><strong>Total Horas</strong></TableCell>
+                    <TableCell align="center"><strong>Registros</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {datosAgrupados.map((dia) => (
-                    dia.registros.map((registro, index) => (
-                      <TableRow key={`${dia.fecha}-${registro.id_movimiento}`} hover>
-                        {/* Fecha - solo en la primera fila del día */}
-                        {index === 0 && (
-                          <TableCell 
-                            rowSpan={dia.registros.length}
-                            className="bg-gray-50 font-medium border-r-2 border-gray-200"
-                          >
-                            <Box>
-                              <Typography variant="body2" className="font-semibold capitalize">
-                                {formatearFecha(dia.fecha)}
-                              </Typography>
-                            </Box>
-                          </TableCell>
-                        )}
-                        
-                        {/* Obra */}
-                        <TableCell>{obtenerNombreObra(registro.id_obra)}</TableCell>
-                        
-                        {/* Partida */}
-                        <TableCell>{registro.nombre_partida || 'N/A'}</TableCell>
-                        
-                        {/* Horario */}
-                        <TableCell>{formatearHorario(registro.hora_inicio, registro.hora_fin)}</TableCell>
-                        
-                        {/* Horas individuales */}
-                        <TableCell>
-                          <Box className="flex items-center gap-2">
-                            {parseFloat(registro.horas_totales || 0).toFixed(2)}h
-                            {registro.es_extra && (
-                              <Chip 
-                                label={registro.tipo_extra === 'interno' ? 'Int' : 'Ext'}
-                                color="warning"
-                                size="small"
-                              />
-                            )}
-                          </Box>
-                        </TableCell>
-                        
-                        {/* Total del día - solo en la primera fila del día */}
-                        {index === 0 && (
-                          <TableCell 
-                            rowSpan={dia.registros.length}
-                            className="bg-primary-50 font-bold text-primary-700 border-l-2 border-primary-200"
-                          >
-                            {dia.totalHoras.toFixed(2)}h
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))
+                  {Object.entries(resumenObras).map(([obra, datos]) => (
+                    <TableRow key={obra}>
+                      <TableCell>{obra}</TableCell>
+                      <TableCell align="right">
+                        <Chip label={`${datos.normales.toFixed(2)}h`} size="small" color="primary" />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip label={`${datos.extras.toFixed(2)}h`} size="small" color="warning" />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip label={`${datos.total.toFixed(2)}h`} size="small" color="success" />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip label={datos.registros} size="small" variant="outlined" />
+                      </TableCell>
+                    </TableRow>
                   ))}
+                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    <TableCell><strong>TOTAL</strong></TableCell>
+                    <TableCell align="right">
+                      <Chip 
+                        label={`${Object.values(resumenObras).reduce((acc, datos) => acc + datos.normales, 0).toFixed(2)}h`} 
+                        size="small" 
+                        color="primary" 
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip 
+                        label={`${Object.values(resumenObras).reduce((acc, datos) => acc + datos.extras, 0).toFixed(2)}h`} 
+                        size="small" 
+                        color="warning" 
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip 
+                        label={`${totalHoras.toFixed(2)}h`} 
+                        size="small" 
+                        color="success" 
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Chip 
+                        label={Object.values(resumenObras).reduce((acc, datos) => acc + datos.registros, 0)} 
+                        size="small" 
+                        variant="outlined"
+                      />
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
             </TableContainer>
-          ) : (
-            <Box className="p-10 text-center">
-              <FaCalendarAlt className="text-6xl text-gray-300 mb-4 mx-auto" />
-              <Typography variant="h6" className="text-gray-500 mb-2">
-                No hay registros
+          </Paper>
+        )}
+
+        {/* Detalle por fechas */}
+        {Object.keys(datosAgrupados).length > 0 && (
+          <Paper sx={{ p: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6">
+                Detalle de: {obtenerNombreTrabajador()}
               </Typography>
-              <Typography variant="body2" className="text-gray-400">
-                No se encontraron horas registradas para el período seleccionado
-              </Typography>
+              <Button
+                size="small"
+                onClick={toggleOrdenFecha}
+                startIcon={ordenFecha === 'asc' ? <FaSortAmountUp /> : <FaSortAmountDown />}
+              >
+                Fecha {ordenFecha === 'asc' ? 'Ascendente' : 'Descendente'}
+              </Button>
             </Box>
-          )}
-        </Paper>
+
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Fecha</strong></TableCell>
+                    <TableCell><strong>Obra</strong></TableCell>
+                    <TableCell><strong>Partida</strong></TableCell>
+                    <TableCell><strong>Inicio</strong></TableCell>
+                    <TableCell><strong>Fin</strong></TableCell>
+                    <TableCell align="right"><strong>Horas</strong></TableCell>
+                    <TableCell align="center"><strong>Tipo</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {getFechasOrdenadas().map(fecha => {
+                    const horasFecha = datosAgrupados[fecha];
+                    
+                    return horasFecha.map((hora, index) => (
+                      <TableRow key={`${fecha}-${index}`}>
+                        {index === 0 && (
+                          <TableCell rowSpan={horasFecha.length}>
+                            <strong>{formatearFecha(fecha)}</strong>
+                          </TableCell>
+                        )}
+                        <TableCell>{hora.obra_nombre}</TableCell>
+                        <TableCell>{hora.nombre_partida || 'Sin partida'}</TableCell>
+                        <TableCell>{formatearHora(hora.hora_inicio)}</TableCell>
+                        <TableCell>{formatearHora(hora.hora_fin)}</TableCell>
+                        <TableCell align="right">
+                          <Chip 
+                            label={`${hora.horas_numericas.toFixed(2)}h`} 
+                            size="small" 
+                            color={hora.es_extra ? 'warning' : 'primary'}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            label={hora.es_extra ? 'Extra' : 'Normal'}
+                            color={hora.es_extra ? 'warning' : 'primary'}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
+
+        {horas.length === 0 && !loading && trabajadorSeleccionado && (
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary">
+              No se encontraron registros para los filtros seleccionados
+            </Typography>
+          </Paper>
+        )}
       </Box>
     </Layout>
   );
 };
 
-export default InformeTrabajador; 
+export default InformeTrabajador;

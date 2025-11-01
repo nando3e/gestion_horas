@@ -48,241 +48,213 @@ const InformeObra = () => {
   const [añosSeleccionados, setAñosSeleccionados] = useState([]);
   const [mesesSeleccionados, setMesesSeleccionados] = useState([]);
   const [incluirAcabadas, setIncluirAcabadas] = useState(true);
-  const [ordenHoras, setOrdenHoras] = useState('desc'); // 'asc' o 'desc'
-
+  
   // Datos agrupados
-  const [datosAgrupados, setDatosAgrupados] = useState([]);
+  const [datosAgrupados, setDatosAgrupados] = useState({});
+  const [totalHoras, setTotalHoras] = useState(0);
+  const [ordenFecha, setOrdenFecha] = useState('desc'); // 'asc' o 'desc'
+
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
 
   useEffect(() => {
-    cargarObras();
+    loadObras();
+    
+    // Establecer año y mes actual por defecto
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    setAñosSeleccionados([currentYear]);
+    setMesesSeleccionados([currentMonth]);
+    
+    // Generar años disponibles (desde 2020 hasta año actual + 1)
+    const years = [];
+    for (let year = 2020; year <= currentYear + 1; year++) {
+      years.push(year);
+    }
+    setAñosDisponibles(years);
+    
+    // Todos los meses disponibles
+    setMesesDisponibles(Array.from({ length: 12 }, (_, i) => i));
   }, []);
 
-  useEffect(() => {
-    if (obraSeleccionada) {
-      cargarPeriodosDisponibles();
-    }
-  }, [obraSeleccionada]);
-
-  useEffect(() => {
-    if (obraSeleccionada && añosSeleccionados.length > 0 && mesesSeleccionados.length > 0) {
-      cargarHoras();
-    }
-  }, [obraSeleccionada, añosSeleccionados, mesesSeleccionados, incluirAcabadas]);
-
-  useEffect(() => {
-    // Reordenar cuando cambie el orden
-    if (horas.length > 0) {
-      agruparHorasPorPartida(horas);
-    }
-  }, [ordenHoras]);
-
-  const cargarObras = async () => {
+  const loadObras = async () => {
     try {
-      const obrasData = await obrasService.getObras();
-      setObras(obrasData);
+      const response = await obrasService.getObras();
+      setObras(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('Error al cargar obras:', error);
       setError('Error al cargar las obras');
     }
   };
 
-  const cargarPeriodosDisponibles = async () => {
-    try {
-      // Por ahora simulamos la lógica hasta que tengamos el endpoint
-      // TODO: Crear endpoint /horas/periodos-disponibles/{id_obra}
-      
-      // Simulación: obtener todas las horas de la obra para extraer períodos
-      const todasLasHoras = await horasService.getHoras({ id_obra: obraSeleccionada });
-      
-      // Extraer años y meses únicos
-      const fechasUnicas = [...new Set(todasLasHoras.map(h => h.fecha))];
-      const añosUnicos = [...new Set(fechasUnicas.map(fecha => new Date(fecha).getFullYear()))].sort();
-      const mesesUnicos = [...new Set(fechasUnicas.map(fecha => new Date(fecha).getMonth()))].sort();
-      
-      setAñosDisponibles(añosUnicos);
-      setMesesDisponibles(mesesUnicos);
-      
-      // Auto-seleccionar el año actual si está disponible
-      const añoActual = new Date().getFullYear();
-      if (añosUnicos.includes(añoActual)) {
-        setAñosSeleccionados([añoActual]);
-      } else if (añosUnicos.length > 0) {
-        setAñosSeleccionados([añosUnicos[añosUnicos.length - 1]]); // Último año disponible
-      }
-      
-      // Auto-seleccionar el mes actual si está disponible
-      const mesActual = new Date().getMonth();
-      if (mesesUnicos.includes(mesActual)) {
-        setMesesSeleccionados([mesActual]);
-      } else if (mesesUnicos.length > 0) {
-        setMesesSeleccionados([mesesUnicos[mesesUnicos.length - 1]]); // Último mes disponible
-      }
-      
-    } catch (error) {
-      console.error('Error al cargar períodos disponibles:', error);
-      setError('Error al cargar los períodos disponibles');
+  const loadHoras = async () => {
+    if (!obraSeleccionada) {
+      setError('Selecciona una obra para generar el informe');
+      return;
     }
-  };
 
-  const cargarHoras = async () => {
+    setLoading(true);
+    setError('');
+    
     try {
-      setLoading(true);
-      setError('');
+      const filtros = {
+        id_obra: obraSeleccionada
+      };
       
-      // Obtener todas las horas de los períodos seleccionados
-      const todasLasHoras = [];
-      
-      for (const año of añosSeleccionados) {
-        for (const mes of mesesSeleccionados) {
-          const inicioMes = new Date(año, mes, 1);
-          const fechaInicio = `${inicioMes.getFullYear()}-${(inicioMes.getMonth() + 1).toString().padStart(2, '0')}-${inicioMes.getDate().toString().padStart(2, '0')}`;
-          
-          const finMes = new Date(año, mes + 1, 0);
-          const fechaFin = `${finMes.getFullYear()}-${(finMes.getMonth() + 1).toString().padStart(2, '0')}-${finMes.getDate().toString().padStart(2, '0')}`;
-          
-          const horasDelPeriodo = await horasService.getHoras({
-            id_obra: obraSeleccionada,
-            fecha_inicio: fechaInicio,
-            fecha_fin: fechaFin
-          });
-          
-          todasLasHoras.push(...horasDelPeriodo);
-        }
+      // Si hay años y meses seleccionados, aplicar filtros de fecha
+      if (añosSeleccionados.length > 0 && mesesSeleccionados.length > 0) {
+        // Para simplificar, tomamos el primer año y mes seleccionado
+        // En una implementación más compleja, podríamos manejar múltiples rangos
+        const año = añosSeleccionados[0];
+        const mes = mesesSeleccionados[0];
+        
+        const fechaInicio = new Date(año, mes, 1);
+        const fechaFin = new Date(año, mes + 1, 0);
+        
+        filtros.fecha_inicio = format(fechaInicio, 'yyyy-MM-dd');
+        filtros.fecha_fin = format(fechaFin, 'yyyy-MM-dd');
       }
       
-      setHoras(todasLasHoras);
-      agruparHorasPorPartida(todasLasHoras);
+      const response = await horasService.getHoras(filtros);
+      const horasData = Array.isArray(response) ? response : (response.horas || []);
+      
+      setHoras(horasData);
+      procesarDatos(horasData);
       
     } catch (error) {
       console.error('Error al cargar horas:', error);
-      setError('Error al cargar las horas de la obra');
+      setError('Error al cargar los datos del informe');
     } finally {
       setLoading(false);
     }
   };
 
-  const agruparHorasPorPartida = (horasData) => {
-    // Filtrar por estado de partidas si es necesario
-    let horasFiltradas = horasData;
-    if (!incluirAcabadas) {
-      // TODO: Filtrar por estado de partida cuando tengamos esa información
-      // horasFiltradas = horasData.filter(h => h.estado_partida !== 'acabada');
-    }
-
-    // Agrupar por partida
-    const agrupado = horasFiltradas.reduce((acc, hora) => {
-      const partidaKey = hora.id_partida || 'sin_partida';
-      const partidaNombre = hora.nombre_partida || 'Sin partida';
+  const procesarDatos = (horasData) => {
+    const agrupados = {};
+    let total = 0;
+    
+    horasData.forEach(hora => {
+      const fecha = hora.fecha;
+      const trabajador = hora.nombre_trabajador || hora.chat_id;
+      const partida = hora.nombre_partida || 'Sin partida';
+      const horas = parseFloat(hora.horas_totales) || 0;
       
-      if (!acc[partidaKey]) {
-        acc[partidaKey] = {
-          id_partida: partidaKey,
-          nombre_partida: partidaNombre,
-          horas_totales: 0,
+      if (!agrupados[fecha]) {
+        agrupados[fecha] = {};
+      }
+      
+      if (!agrupados[fecha][trabajador]) {
+        agrupados[fecha][trabajador] = {};
+      }
+      
+      if (!agrupados[fecha][trabajador][partida]) {
+        agrupados[fecha][trabajador][partida] = {
+          horas: 0,
           registros: []
         };
       }
       
-      acc[partidaKey].horas_totales += parseFloat(hora.horas_totales || 0);
-      acc[partidaKey].registros.push(hora);
-      
-      return acc;
-    }, {});
-
-    // Convertir a array y ordenar por horas
-    const resultado = Object.values(agrupado)
-      .sort((a, b) => {
-        return ordenHoras === 'desc' ? b.horas_totales - a.horas_totales : a.horas_totales - b.horas_totales;
-      });
-
-    setDatosAgrupados(resultado);
+      agrupados[fecha][trabajador][partida].horas += horas;
+      agrupados[fecha][trabajador][partida].registros.push(hora);
+      total += horas;
+    });
+    
+    setDatosAgrupados(agrupados);
+    setTotalHoras(total);
   };
 
-  const calcularTotalGeneral = () => {
-    return datosAgrupados.reduce((total, partida) => total + partida.horas_totales, 0);
+  const generarInforme = () => {
+    loadHoras();
   };
 
-  // Funciones de selección masiva
-  const seleccionarTodosLosAños = () => {
-    setAñosSeleccionados([...añosDisponibles]);
-  };
-
-  const deseleccionarTodosLosAños = () => {
+  const limpiarFiltros = () => {
+    setObraSeleccionada('');
     setAñosSeleccionados([]);
-  };
-
-  const seleccionarTodosLosMeses = () => {
-    setMesesSeleccionados([...mesesDisponibles]);
-  };
-
-  const deseleccionarTodosLosMeses = () => {
     setMesesSeleccionados([]);
+    setHoras([]);
+    setDatosAgrupados({});
+    setTotalHoras(0);
+    setError('');
   };
-
-  const eliminarAño = (añoAEliminar) => {
-    const nuevosAños = añosSeleccionados.filter(año => año !== añoAEliminar);
-    setAñosSeleccionados(nuevosAños);
-  };
-
-  const eliminarMes = (mesAEliminar) => {
-    const nuevosMeses = mesesSeleccionados.filter(mes => mes !== mesAEliminar);
-    setMesesSeleccionados(nuevosMeses);
-  };
-
-  // Nombres de meses
-  const meses = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ];
 
   const obtenerNombreObra = () => {
     const obra = obras.find(o => o.id_obra === parseInt(obraSeleccionada));
-    return obra ? obra.nombre_obra : 'Obra';
+    return obra ? obra.nombre_obra : 'Obra no encontrada';
+  };
+
+  const formatearFecha = (fecha) => {
+    try {
+      return format(new Date(fecha), 'dd/MM/yyyy', { locale: es });
+    } catch (error) {
+      return fecha;
+    }
+  };
+
+  const getFechasOrdenadas = () => {
+    const fechas = Object.keys(datosAgrupados);
+    return fechas.sort((a, b) => {
+      const fechaA = new Date(a);
+      const fechaB = new Date(b);
+      return ordenFecha === 'asc' ? fechaA - fechaB : fechaB - fechaA;
+    });
+  };
+
+  const toggleOrdenFecha = () => {
+    setOrdenFecha(ordenFecha === 'asc' ? 'desc' : 'asc');
   };
 
   return (
     <Layout>
-      <Box className="pb-6">
+      <Box sx={{ p: 3 }}>
         {/* Breadcrumbs */}
-        <Breadcrumbs className="mb-4">
-          <Link to="/informes" className="text-primary-600 hover:text-primary-800">
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link to="/informes" style={{ textDecoration: 'none', color: '#1976d2' }}>
             Informes
           </Link>
-          <Typography color="text.primary">Por Obra</Typography>
+          <Typography color="text.primary">Informe por Obra</Typography>
         </Breadcrumbs>
 
-        {/* Header */}
-        <Box className="flex justify-between items-center mb-6">
-          <Box>
-            <Typography variant="h4" component="h1" className="font-bold text-gray-800">
-              Informe por Obra
-            </Typography>
-            <Typography variant="subtitle1" className="text-gray-600 mt-1">
-              Horas totales por partida en el período seleccionado
-            </Typography>
-          </Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" component="h1">
+            <FaBuilding style={{ marginRight: '10px', color: '#1976d2' }} />
+            Informe por Obra
+          </Typography>
           <Button
             component={Link}
             to="/informes"
             variant="outlined"
             startIcon={<FaArrowLeft />}
           >
-            Volver
+            Volver a Informes
           </Button>
         </Box>
 
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         {/* Filtros */}
-        <Paper elevation={2} className="p-4 mb-6">
-          <Box className="flex flex-col gap-4">
-            {/* Primera fila: Obra */}
-            <FormControl size="small" sx={{ minWidth: 300 }} required>
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Filtros
+          </Typography>
+          
+          <Box display="flex" flexWrap="wrap" gap={2} alignItems="center">
+            {/* Selección de obra */}
+            <FormControl sx={{ minWidth: 200 }}>
               <InputLabel>Obra</InputLabel>
               <Select
                 value={obraSeleccionada}
                 label="Obra"
                 onChange={(e) => setObraSeleccionada(e.target.value)}
               >
-                <MenuItem value="">Selecciona una obra</MenuItem>
+                <MenuItem value="">Seleccionar obra</MenuItem>
                 {obras.map((obra) => (
                   <MenuItem key={obra.id_obra} value={obra.id_obra}>
                     {obra.nombre_obra}
@@ -291,219 +263,165 @@ const InformeObra = () => {
               </Select>
             </FormControl>
 
-            {/* Segunda fila: Años con selección masiva */}
-            {añosDisponibles.length > 0 && (
-              <Box>
-                <Typography variant="subtitle2" className="mb-3 font-semibold text-gray-700">
-                  Años:
-                </Typography>
-                <Box className="flex flex-wrap gap-2 mb-3">
-                  {añosSeleccionados.map((año) => (
-                    <Chip 
-                      key={año} 
-                      label={año} 
-                      size="small"
-                      variant="outlined"
-                      onDelete={() => eliminarAño(año)}
-                      sx={{ backgroundColor: '#f3f4f6', color: '#374151' }}
-                    />
-                  ))}
-                </Box>
-                <Box className="flex gap-2 items-center">
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Seleccionar años</InputLabel>
-                    <Select
-                      multiple
-                      value={añosSeleccionados}
-                      label="Seleccionar años"
-                      onChange={(e) => setAñosSeleccionados(e.target.value)}
-                    >
-                      {añosDisponibles.map((año) => (
-                        <MenuItem key={año} value={año}>
-                          {año}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <Button 
-                    size="small"
-                    variant="outlined"
-                    onClick={seleccionarTodosLosAños}
-                  >
-                    Todos
-                  </Button>
-                  <Button 
-                    size="small"
-                    variant="outlined"
-                    onClick={deseleccionarTodosLosAños}
-                  >
-                    Ninguno
-                  </Button>
-                </Box>
-              </Box>
-            )}
+            {/* Selección de año */}
+            <FormControl sx={{ minWidth: 120 }}>
+              <InputLabel>Año</InputLabel>
+              <Select
+                value={añosSeleccionados[0] || ''}
+                label="Año"
+                onChange={(e) => setAñosSeleccionados([e.target.value])}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {añosDisponibles.map((año) => (
+                  <MenuItem key={año} value={año}>
+                    {año}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            {/* Tercera fila: Meses con selección masiva */}
-            {mesesDisponibles.length > 0 && (
-              <Box>
-                <Typography variant="subtitle2" className="mb-3 font-semibold text-gray-700">
-                  Meses:
-                </Typography>
-                <Box className="flex flex-wrap gap-2 mb-3">
-                  {mesesSeleccionados.map((mes) => (
-                    <Chip 
-                      key={mes} 
-                      label={meses[mes]} 
-                      size="small"
-                      variant="outlined"
-                      onDelete={() => eliminarMes(mes)}
-                      sx={{ backgroundColor: '#f3f4f6', color: '#374151' }}
-                    />
-                  ))}
-                </Box>
-                <Box className="flex gap-2 items-center">
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Seleccionar meses</InputLabel>
-                    <Select
-                      multiple
-                      value={mesesSeleccionados}
-                      label="Seleccionar meses"
-                      onChange={(e) => setMesesSeleccionados(e.target.value)}
-                    >
-                      {mesesDisponibles.map((mes) => (
-                        <MenuItem key={mes} value={mes}>
-                          {meses[mes]}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <Button 
-                    size="small"
-                    variant="outlined"
-                    onClick={seleccionarTodosLosMeses}
-                  >
-                    Todos
-                  </Button>
-                  <Button 
-                    size="small"
-                    variant="outlined"
-                    onClick={deseleccionarTodosLosMeses}
-                  >
-                    Ninguno
-                  </Button>
-                </Box>
-              </Box>
-            )}
+            {/* Selección de mes */}
+            <FormControl sx={{ minWidth: 150 }}>
+              <InputLabel>Mes</InputLabel>
+              <Select
+                value={mesesSeleccionados[0] !== undefined ? mesesSeleccionados[0] : ''}
+                label="Mes"
+                onChange={(e) => setMesesSeleccionados([e.target.value])}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {mesesDisponibles.map((mes) => (
+                  <MenuItem key={mes} value={mes}>
+                    {meses[mes]}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            {/* Cuarta fila: Controles adicionales */}
-            <Box className="flex gap-4 items-center">
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={incluirAcabadas}
-                    onChange={(e) => setIncluirAcabadas(e.target.checked)}
-                  />
-                }
-                label="Incluir partidas acabadas"
-              />
+            {/* Incluir acabadas */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={incluirAcabadas}
+                  onChange={(e) => setIncluirAcabadas(e.target.checked)}
+                />
+              }
+              label="Incluir acabadas"
+            />
 
-              {datosAgrupados.length > 0 && (
-                <Button
-                  variant="outlined"
-                  startIcon={ordenHoras === 'desc' ? <FaSortAmountDown /> : <FaSortAmountUp />}
-                  onClick={() => setOrdenHoras(ordenHoras === 'desc' ? 'asc' : 'desc')}
-                  title={`Ordenar por horas ${ordenHoras === 'desc' ? 'ascendente' : 'descendente'}`}
-                >
-                  Horas
-                </Button>
-              )}
-            </Box>
+            {/* Botones */}
+            <Button
+              variant="contained"
+              onClick={generarInforme}
+              disabled={!obraSeleccionada || loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <FaCalendarAlt />}
+            >
+              {loading ? 'Generando...' : 'Generar Informe'}
+            </Button>
+            
+            <Button
+              variant="outlined"
+              onClick={limpiarFiltros}
+            >
+              Limpiar
+            </Button>
           </Box>
         </Paper>
 
-        {/* Resumen */}
-        {datosAgrupados.length > 0 && (
-          <Paper elevation={2} className="p-4 mb-6 bg-primary-50">
-            <Box className="flex items-center justify-between">
-              <Box className="flex items-center gap-4">
-                <FaBuilding className="text-primary-600 text-xl" />
-                <Typography variant="h6" className="font-semibold">
-                  {obtenerNombreObra()}
-                </Typography>
-              </Box>
-              <Box className="text-right">
-                <Typography variant="h5" className="font-bold text-primary-700">
-                  {calcularTotalGeneral().toFixed(2)}
-                </Typography>
-                <Typography variant="body2" className="text-gray-600">
-                  Total período
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
-        )}
-
-        {/* Error */}
-        {error && (
-          <Alert severity="error" className="mb-6">
-            {error}
-          </Alert>
-        )}
-
-        {/* Tabla de resultados */}
-        <Paper elevation={3} className="overflow-hidden">
-          {loading ? (
-            <Box className="flex justify-center items-center p-10">
-              <CircularProgress />
-            </Box>
-          ) : !obraSeleccionada ? (
-            <Box className="p-10 text-center">
-              <FaBuilding className="text-6xl text-gray-300 mb-4 mx-auto" />
-              <Typography variant="h6" className="text-gray-500 mb-2">
-                Selecciona una obra
+        {/* Resultados */}
+        {Object.keys(datosAgrupados).length > 0 && (
+          <Paper sx={{ p: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6">
+                Informe de: {obtenerNombreObra()}
               </Typography>
-              <Typography variant="body2" className="text-gray-400">
-                Elige una obra para generar el informe de horas por partida
-              </Typography>
+              <Box display="flex" alignItems="center" gap={2}>
+                <Chip 
+                  label={`Total: ${totalHoras.toFixed(2)} horas`} 
+                  color="primary" 
+                  variant="outlined"
+                />
+                <Button
+                  size="small"
+                  onClick={toggleOrdenFecha}
+                  startIcon={ordenFecha === 'asc' ? <FaSortAmountUp /> : <FaSortAmountDown />}
+                >
+                  Fecha {ordenFecha === 'asc' ? 'Ascendente' : 'Descendente'}
+                </Button>
+              </Box>
             </Box>
-          ) : datosAgrupados.length > 0 ? (
+
             <TableContainer>
               <Table>
-                <TableHead className="bg-gray-100">
+                <TableHead>
                   <TableRow>
-                    <TableCell className="font-bold">Partida</TableCell>
-                    <TableCell className="font-bold text-right">Horas Totales</TableCell>
+                    <TableCell><strong>Fecha</strong></TableCell>
+                    <TableCell><strong>Trabajador</strong></TableCell>
+                    <TableCell><strong>Partida</strong></TableCell>
+                    <TableCell align="right"><strong>Horas</strong></TableCell>
+                    <TableCell align="center"><strong>Registros</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {datosAgrupados.map((partida) => (
-                    <TableRow key={partida.id_partida} hover>
-                      <TableCell className="font-medium">
-                        {partida.nombre_partida}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {partida.horas_totales.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {getFechasOrdenadas().map(fecha => {
+                    const trabajadoresFecha = datosAgrupados[fecha];
+                    const trabajadoresKeys = Object.keys(trabajadoresFecha);
+                    
+                    return trabajadoresKeys.map((trabajador, trabajadorIndex) => {
+                      const partidasTrabajador = trabajadoresFecha[trabajador];
+                      const partidasKeys = Object.keys(partidasTrabajador);
+                      
+                      return partidasKeys.map((partida, partidaIndex) => {
+                        const datos = partidasTrabajador[partida];
+                        const esFirstRow = trabajadorIndex === 0 && partidaIndex === 0;
+                        
+                        return (
+                          <TableRow key={`${fecha}-${trabajador}-${partida}`}>
+                            {esFirstRow && (
+                              <TableCell rowSpan={trabajadoresKeys.reduce((acc, t) => acc + Object.keys(trabajadoresFecha[t]).length, 0)}>
+                                {formatearFecha(fecha)}
+                              </TableCell>
+                            )}
+                            {partidaIndex === 0 && (
+                              <TableCell rowSpan={partidasKeys.length}>
+                                {trabajador}
+                              </TableCell>
+                            )}
+                            <TableCell>{partida}</TableCell>
+                            <TableCell align="right">
+                              <Chip 
+                                label={`${datos.horas.toFixed(2)}h`} 
+                                size="small" 
+                                color="primary"
+                              />
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip 
+                                label={datos.registros.length} 
+                                size="small" 
+                                variant="outlined"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    });
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
-          ) : (
-            <Box className="p-10 text-center">
-              <FaCalendarAlt className="text-6xl text-gray-300 mb-4 mx-auto" />
-              <Typography variant="h6" className="text-gray-500 mb-2">
-                No hay registros
-              </Typography>
-              <Typography variant="body2" className="text-gray-400">
-                No se encontraron horas registradas para el período seleccionado
-              </Typography>
-            </Box>
-          )}
-        </Paper>
+          </Paper>
+        )}
+
+        {horas.length === 0 && !loading && obraSeleccionada && (
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="h6" color="text.secondary">
+              No se encontraron registros para los filtros seleccionados
+            </Typography>
+          </Paper>
+        )}
       </Box>
     </Layout>
   );
 };
 
-export default InformeObra; 
+export default InformeObra;

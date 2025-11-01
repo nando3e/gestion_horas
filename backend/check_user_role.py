@@ -18,4 +18,4 @@ if login_response.status_code == 200:
     print(f'   Chat ID: {user_data["chat_id"]}')
     print(f'   User ID: {user_data["user_id"]}')
 else:
-    print(f'❌ Error: {login_response.status_code} - {login_response.text}') 
+    print(f'❌ Error: {login_response.status_code} - {login_response.text}')
