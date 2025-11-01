@@ -38,7 +38,7 @@ services:
     environment:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${CLIENT_KEY}-postgres
+      DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
       SECRET_KEY: ${SECRET_KEY}
@@ -52,7 +52,7 @@ services:
     command: >
       bash -c "
         echo '⏳ Esperando a Postgres...';
-        until python -c 'import socket; s=socket.socket(); s.settimeout(1); s.connect((\"${CLIENT_KEY}-postgres\", 5432)); s.close()' 2>/dev/null; do sleep 2; done;
+        until python -c 'import socket; s=socket.socket(); s.settimeout(1); s.connect((\"postgres\", 5432)); s.close()' 2>/dev/null; do sleep 2; done;
         echo '✅ Base de datos disponible';
         uvicorn main:app --host 0.0.0.0 --port 8000
       "
