@@ -1,12 +1,19 @@
 import axios from 'axios';
 
-// Configuración SIMPLE de la URL base de la API
-const API_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8000/api/v1'  // LOCAL
-  : '/api/v1';                      // PRODUCCIÓN (hores.rbimprove.com)
+// Configuración de la URL base de la API
+// Asegura que use el mismo protocolo que la página (HTTPS en producción)
+const getApiUrl = () => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // Desarrollo local
+    return 'http://localhost:8000/api/v1';
+  }
+  // Producción: usar el mismo protocolo y hostname que la página actual
+  // Esto evita problemas de Mixed Content (HTTP en páginas HTTPS)
+  return `${window.location.origin}/api/v1`;
+};
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

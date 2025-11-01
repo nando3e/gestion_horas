@@ -30,18 +30,28 @@ RUN npm run build
 # Etapa de producción - usando nginx para servir contenido estático
 FROM nginx:alpine
 
+# Instalar envsubst (viene con gettext)
+RUN apk add --no-cache gettext
+
 # Copiar los archivos construidos desde la etapa de 'build' a la carpeta de Nginx
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Eliminar la configuración por defecto de Nginx
-RUN rm /etc/nginx/conf.d/default.conf
+# Crear directorio para templates de nginx
+RUN mkdir -p /etc/nginx/templates
 
-# Copiar tu archivo de configuración personalizado de Nginx.
-# Este archivo 'nginx.conf' debe existir en el mismo directorio que este Dockerfile.
-COPY frontend/nginx.conf /etc/nginx/conf.d/
+# Copiar el template de configuración de Nginx
+COPY frontend/nginx.conf.template /etc/nginx/templates/
+
+# Copiar el script de entrada
+COPY frontend/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Variables de entorno por defecto (pueden ser sobrescritas)
+ENV API_SERVICE_NAME=api
+ENV API_PORT=8000
 
 # Exponer el puerto 80 (Nginx escucha en este puerto por defecto)
 EXPOSE 80
 
-# El comando CMD para iniciar Nginx está implícito en la imagen base de nginx:alpine
-# y se ejecutará automáticamente.
+# Usar nuestro script de entrada personalizado
+CMD ["/docker-entrypoint.sh"]
