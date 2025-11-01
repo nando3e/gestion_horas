@@ -34,16 +34,20 @@ const horasService = {
   
   // Obtener horas del día de hoy para el usuario autenticado
   getHorasHoy: async () => {
-    const today = new Date().toISOString().split('T')[0];
+    const hoy = new Date();
+    const today = `${hoy.getFullYear()}-${(hoy.getMonth() + 1).toString().padStart(2, '0')}-${hoy.getDate().toString().padStart(2, '0')}`;
     const response = await api.get(`/horas?fecha=${today}`);
     return response.data;
   },
   
   // Obtener horas de un mes específico
   getHorasMes: async (año, mes) => {
-    // Calcular fechas de inicio y fin del mes
-    const primerDia = new Date(año, mes, 1).toISOString().split('T')[0];
-    const ultimoDia = new Date(año, mes + 1, 0).toISOString().split('T')[0];
+    // Calcular fechas de inicio y fin del mes (evitando problemas de zona horaria)
+    const inicioMes = new Date(año, mes, 1);
+    const primerDia = `${inicioMes.getFullYear()}-${(inicioMes.getMonth() + 1).toString().padStart(2, '0')}-${inicioMes.getDate().toString().padStart(2, '0')}`;
+    
+    const finMes = new Date(año, mes + 1, 0);
+    const ultimoDia = `${finMes.getFullYear()}-${(finMes.getMonth() + 1).toString().padStart(2, '0')}-${finMes.getDate().toString().padStart(2, '0')}`;
     
     const params = new URLSearchParams();
     params.append('fecha_inicio', primerDia);

@@ -143,9 +143,12 @@ const ListaHoras = () => {
         const obrasData = await obrasService.getObras();
         setObras(obrasData);
         
-        // Obtener fechas inicio y fin del mes seleccionado
-        const fechaInicio = startOfMonth(new Date(filtros.año, filtros.mes, 1)).toISOString().split('T')[0];
-        const fechaFin = endOfMonth(new Date(filtros.año, filtros.mes, 1)).toISOString().split('T')[0];
+        // Obtener fechas inicio y fin del mes seleccionado (evitando problemas de zona horaria)
+        const inicioMes = new Date(filtros.año, filtros.mes, 1);
+        const fechaInicio = `${inicioMes.getFullYear()}-${(inicioMes.getMonth() + 1).toString().padStart(2, '0')}-${inicioMes.getDate().toString().padStart(2, '0')}`;
+        
+        const finMes = new Date(filtros.año, filtros.mes + 1, 0);
+        const fechaFin = `${finMes.getFullYear()}-${(finMes.getMonth() + 1).toString().padStart(2, '0')}-${finMes.getDate().toString().padStart(2, '0')}`;
         
         // Pasar parámetros de fechas al servicio
         const params = {

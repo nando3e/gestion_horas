@@ -90,8 +90,13 @@ const InformeTrabajador = () => {
       const todasLasHoras = [];
       
       for (const mes of mesesSeleccionados) {
-        const fechaInicio = new Date(añoSeleccionado, mes, 1).toISOString().split('T')[0];
-        const fechaFin = new Date(añoSeleccionado, mes + 1, 0).toISOString().split('T')[0];
+        // Calcular primer día del mes (evitando problemas de zona horaria)
+        const inicioMes = new Date(añoSeleccionado, mes, 1);
+        const fechaInicio = `${inicioMes.getFullYear()}-${(inicioMes.getMonth() + 1).toString().padStart(2, '0')}-${inicioMes.getDate().toString().padStart(2, '0')}`;
+        
+        // Calcular último día del mes (evitando problemas de zona horaria)
+        const finMes = new Date(añoSeleccionado, mes + 1, 0);
+        const fechaFin = `${finMes.getFullYear()}-${(finMes.getMonth() + 1).toString().padStart(2, '0')}-${finMes.getDate().toString().padStart(2, '0')}`;
         
         const horasDelMes = await horasService.getHoras({
           chat_id: trabajadorSeleccionado,
