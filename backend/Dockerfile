@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Instalar dependencias
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código de la aplicación
-COPY . .
+COPY backend/ .
 
 # Exponer el puerto que utiliza la aplicación
 EXPOSE 8000

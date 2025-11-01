@@ -15,13 +15,13 @@ ENV REACT_APP_API_URL_LOCAL=${REACT_APP_API_URL_LOCAL}
 WORKDIR /app
 
 # Copiar solo package.json y package-lock.json primero para aprovechar el caché de Docker
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 
 # Instalar dependencias
 RUN npm ci
 
 # Copiar el resto de los archivos de la aplicación
-COPY . .
+COPY frontend/ .
 
 # Construir la aplicación React.
 # REACT_APP_API_URL_PROD estará disponible aquí gracias al ENV anterior.
@@ -38,7 +38,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Copiar tu archivo de configuración personalizado de Nginx.
 # Este archivo 'nginx.conf' debe existir en el mismo directorio que este Dockerfile.
-COPY nginx.conf /etc/nginx/conf.d/
+COPY frontend/nginx.conf /etc/nginx/conf.d/
 
 # Exponer el puerto 80 (Nginx escucha en este puerto por defecto)
 EXPOSE 80
