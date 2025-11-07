@@ -1,0 +1,87 @@
+name: ${CLIENT_KEY}
+
+services:
+  # === Base de datos Postgres ===
+  postgres:
+    image: postgres:15
+    hostname: ${CLIENT_KEY}-postgres
+    container_name: ${CLIENT_KEY}-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - ${POSTGRES_EXTERNAL_PORT}:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - gestion_horas_network
+
+  # === API Backend (FastAPI / Uvicorn) - Imagen Docker Hub ===
+  api:
+    image: ${API_IMAGE}
+    hostname: ${CLIENT_KEY}-api
+    container_name: ${CLIENT_KEY}-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID}
+      ADMIN_NOMBRE: ${ADMIN_NOMBRE}
+    command: >
+      bash -c "
+        echo '⏳ Esperando a Postgres...';
+        until python -c 'import socket; s=socket.socket(); s.settimeout(1); s.connect((\"postgres\", 5432)); s.close()' 2>/dev/null; do sleep 2; done;
+        echo '✅ Base de datos disponible';
+        uvicorn main:app --host 0.0.0.0 --port 8000
+      "
+    expose:
+      - "8000"
+    networks:
+      - gestion_horas_network
+      - dokploy-network
+
+  # === Frontend (React / Nginx) - Imagen Docker Hub ===
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    hostname: ${CLIENT_KEY}-frontend
+    container_name: ${CLIENT_KEY}-frontend
+    restart: always
+    depends_on:
+      - api
+    environment:
+      REACT_APP_API_URL: /api/v1
+    expose:
+      - "80"
+    networks:
+      - gestion_horas_network
+      - dokploy-network
+
+volumes:
+  postgres: null
+
+networks:
+  gestion_horas_network:
+    driver: bridge
+  dokploy-network:
+    external: true
+
+

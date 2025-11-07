@@ -563,6 +563,11 @@ async def update_hora(
                 detail="Solo puedes registrar horas de hoy o ayer"
             )
     
+    # Inicializar variables de tiempo con los valores existentes del registro
+    # Esto asegura que siempre estén definidas, incluso si solo se actualiza la partida
+    hora_inicio_actualizada_obj: Optional[time] = db_hora.hora_inicio
+    hora_fin_actualizada_obj: Optional[time] = db_hora.hora_fin
+    
     # Verificar solapamiento si se modifica horario o fecha
     if (hora.horario or hora.fecha) and hora.horario != db_hora.horario:
         horario_a_verificar = hora.horario if hora.horario else db_hora.horario
@@ -583,8 +588,6 @@ async def update_hora(
         print(f"DEBUG: Verificando solapamiento para actualización - trabajador: {db_hora.chat_id}, fecha: {fecha_str}")
         
         # VALIDACIÓN DE SOLAPAMIENTO HORARIO PARA UPDATE
-        hora_inicio_actualizada_obj: Optional[time] = None
-        hora_fin_actualizada_obj: Optional[time] = None
         fecha_actualizada: date = hora.fecha if hora.fecha else db_hora.fecha # Usar nueva fecha o la original
 
         # Determinar si los tiempos se están actualizando y obtener los nuevos valores
