@@ -19,6 +19,7 @@ from app.core.permissions import get_current_secretaria_user, get_current_trabaj
 from app.models.usuarios import Usuario
 from app.models.trabajadores import Trabajador
 from app.models.partidas import Partida  # Import Partida model
+from app.models.obras import Obra
 from sqlalchemy.exc import IntegrityError # Import for commit error handling
 
 router = APIRouter()
@@ -503,7 +504,7 @@ async def create_hora(
 
     db_hora_data = {
         "chat_id": hora.chat_id,
-        "nombre_trabajador": trabajador.nombre_apellidos,
+        "nombre_trabajador": trabajador.nombre,
         "fecha": hora.fecha,
         "id_obra": hora.id_obra,
         "id_partida": hora.id_partida,
@@ -682,12 +683,42 @@ async def update_hora(
         # Para no regularizaciones, usar el string de horario HH:MM-HH:MM calculado.
         update_dict['horario'] = final_horario_str
 
-    # 3. Consolidar id_partida y nombre_partida
+    # 3. Consolidar obra y partida (adjudicación del registro)
+    #    Solo un admin puede reasignar horas ya registradas a otra obra/partida.
+    #    Si el payload trae los mismos valores que ya tiene el registro, no cuenta como cambio.
+    id_obra_final = update_dict.get("id_obra", db_hora.id_obra)
+    id_partida_final = update_dict.get("id_partida", db_hora.id_partida)
+    cambia_adjudicacion = (id_obra_final != db_hora.id_obra) or (id_partida_final != db_hora.id_partida)
+
+    if cambia_adjudicacion:
+        if current_user.rol != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo un administrador puede cambiar la obra o la partida de un registro de horas"
+            )
+        if id_obra_final is not None and not db.query(Obra).filter(Obra.id_obra == id_obra_final).first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Obra con id {id_obra_final} no encontrada al actualizar.")
+        if id_obra_final != db_hora.id_obra and "id_partida" not in update_dict:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Al cambiar la obra hay que indicar también la partida de la nueva obra."
+            )
+
     if "id_partida" in update_dict: # Si id_partida viene en el payload
         if update_dict["id_partida"] is not None:
             partida_obj = db.query(Partida).filter(Partida.id_partida == update_dict["id_partida"]).first()
             if not partida_obj:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Partida con id {update_dict['id_partida']} no encontrada al actualizar.")
+            if id_obra_final is not None and partida_obj.id_obra != id_obra_final:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La partida '{partida_obj.nombre_partida}' no pertenece a la obra con id {id_obra_final}."
+                )
+            if partida_obj.acabada and partida_obj.id_partida != db_hora.id_partida:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La partida '{partida_obj.nombre_partida}' está acabada; no se le pueden asignar horas."
+                )
             update_dict["nombre_partida"] = partida_obj.nombre_partida
         else: # Si id_partida se envía explícitamente como None
             update_dict["nombre_partida"] = None
