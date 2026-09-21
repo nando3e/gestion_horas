@@ -105,22 +105,31 @@ const InformeObra = () => {
         id_obra: obraSeleccionada
       };
       
-      // Si hay años y meses seleccionados, aplicar filtros de fecha
-      if (añosSeleccionados.length > 0 && mesesSeleccionados.length > 0) {
-        // Para simplificar, tomamos el primer año y mes seleccionado
-        // En una implementación más compleja, podríamos manejar múltiples rangos
-        const año = añosSeleccionados[0];
-        const mes = mesesSeleccionados[0];
-        
-        const fechaInicio = new Date(año, mes, 1);
-        const fechaFin = new Date(año, mes + 1, 0);
+      // "Todos" deja el array vacío: solo se acota por fechas lo que el usuario haya concretado
+      const año = añosSeleccionados[0];
+      const mes = mesesSeleccionados[0];
+      const hayAño = Number.isInteger(año);
+      const hayMes = Number.isInteger(mes);
+      
+      if (hayAño) {
+        // Con un mes concreto, el rango es ese mes; con "Todos" los meses, el año entero
+        const fechaInicio = hayMes ? new Date(año, mes, 1) : new Date(año, 0, 1);
+        const fechaFin = hayMes ? new Date(año, mes + 1, 0) : new Date(año, 11, 31);
         
         filtros.fecha_inicio = format(fechaInicio, 'yyyy-MM-dd');
         filtros.fecha_fin = format(fechaFin, 'yyyy-MM-dd');
+      } else {
+        // Sin filtro de fechas hay que subir el límite por defecto de la API (1000 registros)
+        filtros.limit = 100000;
       }
       
       const response = await horasService.getHoras(filtros);
-      const horasData = Array.isArray(response) ? response : (response.horas || []);
+      let horasData = Array.isArray(response) ? response : (response.horas || []);
+      
+      // Año "Todos" con un mes concreto no se puede expresar como rango: se filtra en cliente
+      if (!hayAño && hayMes) {
+        horasData = horasData.filter(hora => obtenerMesDeFecha(hora.fecha) === mes);
+      }
       
       setHoras(horasData);
       procesarDatos(horasData);
@@ -184,6 +193,12 @@ const InformeObra = () => {
   const obtenerNombreObra = () => {
     const obra = obras.find(o => o.id_obra === parseInt(obraSeleccionada));
     return obra ? obra.nombre_obra : 'Obra no encontrada';
+  };
+
+  // Mes (0-11) de una fecha "YYYY-MM-DD", sin pasar por Date para evitar desfases de zona horaria
+  const obtenerMesDeFecha = (fecha) => {
+    if (!fecha || typeof fecha !== 'string' || fecha.length < 7) return null;
+    return parseInt(fecha.substring(5, 7), 10) - 1;
   };
 
   const formatearFecha = (fecha) => {
@@ -269,7 +284,7 @@ const InformeObra = () => {
               <Select
                 value={añosSeleccionados[0] || ''}
                 label="Año"
-                onChange={(e) => setAñosSeleccionados([e.target.value])}
+                onChange={(e) => setAñosSeleccionados(e.target.value === '' ? [] : [Number(e.target.value)])}
               >
                 <MenuItem value="">Todos</MenuItem>
                 {añosDisponibles.map((año) => (
@@ -286,7 +301,7 @@ const InformeObra = () => {
               <Select
                 value={mesesSeleccionados[0] !== undefined ? mesesSeleccionados[0] : ''}
                 label="Mes"
-                onChange={(e) => setMesesSeleccionados([e.target.value])}
+                onChange={(e) => setMesesSeleccionados(e.target.value === '' ? [] : [Number(e.target.value)])}
               >
                 <MenuItem value="">Todos</MenuItem>
                 {mesesDisponibles.map((mes) => (

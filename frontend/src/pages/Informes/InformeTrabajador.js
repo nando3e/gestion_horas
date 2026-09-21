@@ -34,6 +34,15 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+// Convierte "HH:MM[:SS]" a minutos para poder ordenar los intervalos de un día
+const convertirHoraAMinutos = (horaStr) => {
+  if (!horaStr || typeof horaStr !== 'string' || !horaStr.includes(':')) {
+    return Number.MAX_SAFE_INTEGER; // Los registros sin hora de inicio van al final
+  }
+  const [horas, minutos] = horaStr.split(':').map(Number);
+  return horas * 60 + minutos;
+};
+
 const InformeTrabajador = () => {
   const [trabajadores, setTrabajadores] = useState([]);
   const [obras, setObras] = useState([]);
@@ -95,13 +104,14 @@ const InformeTrabajador = () => {
         chat_id: trabajadorSeleccionado
       };
       
-      // Aplicar filtros de fecha si hay meses y año seleccionados
-      if (mesesSeleccionados.length > 0 && añoSeleccionado) {
-        // Para simplificar, tomamos el primer mes seleccionado
+      // Aplicar filtros de fecha según el año y el mes elegidos
+      if (añoSeleccionado) {
+        // "Todos" los meses deja el array vacío: entonces el rango es el año entero
         const mes = mesesSeleccionados[0];
+        const hayMes = Number.isInteger(mes);
         
-        const fechaInicio = new Date(añoSeleccionado, mes, 1);
-        const fechaFin = new Date(añoSeleccionado, mes + 1, 0);
+        const fechaInicio = hayMes ? new Date(añoSeleccionado, mes, 1) : new Date(añoSeleccionado, 0, 1);
+        const fechaFin = hayMes ? new Date(añoSeleccionado, mes + 1, 0) : new Date(añoSeleccionado, 11, 31);
         
         filtros.fecha_inicio = format(fechaInicio, 'yyyy-MM-dd');
         filtros.fecha_fin = format(fechaFin, 'yyyy-MM-dd');
@@ -167,6 +177,13 @@ const InformeTrabajador = () => {
       total += horas;
     });
     
+    // Dentro de cada día, mostrar siempre primero el intervalo más temprano
+    Object.values(agrupados).forEach(registros => {
+      registros.sort(
+        (a, b) => convertirHoraAMinutos(a.hora_inicio) - convertirHoraAMinutos(b.hora_inicio)
+      );
+    });
+
     setDatosAgrupados(agrupados);
     setResumenObras(resumenPorObra);
     setTotalHoras(total);
@@ -308,7 +325,7 @@ const InformeTrabajador = () => {
               <Select
                 value={mesesSeleccionados[0] !== undefined ? mesesSeleccionados[0] : ''}
                 label="Mes"
-                onChange={(e) => setMesesSeleccionados([e.target.value])}
+                onChange={(e) => setMesesSeleccionados(e.target.value === '' ? [] : [Number(e.target.value)])}
               >
                 <MenuItem value="">Todos</MenuItem>
                 {meses.map((mes, index) => (

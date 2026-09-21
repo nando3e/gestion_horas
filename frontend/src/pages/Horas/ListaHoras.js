@@ -53,6 +53,25 @@ import { es } from 'date-fns/locale';
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
 
+// Función auxiliar para convertir hora a minutos para ordenación
+const convertirHoraAMinutos = (horaStr) => {
+  if (!horaStr || typeof horaStr !== 'string' || !horaStr.includes(':')) {
+    return Number.MAX_SAFE_INTEGER; // Para que registros sin hora_inicio válida queden al final en ordenación secundaria
+  }
+  const [horas, minutos] = horaStr.split(':').map(Number);
+  return horas * 60 + minutos;
+};
+
+// Orden de la tabla: fecha descendente y, dentro del mismo día, el intervalo más temprano primero
+const compararHoras = (a, b) => {
+  const fechaA = new Date(a.fecha);
+  const fechaB = new Date(b.fecha);
+  if (fechaA.getTime() !== fechaB.getTime()) {
+    return fechaB.getTime() - fechaA.getTime(); // Descendente por fecha
+  }
+  return convertirHoraAMinutos(a.hora_inicio) - convertirHoraAMinutos(b.hora_inicio);
+};
+
 const ListaHoras = () => {
   const [usuario, setUsuario] = useState(null);
   const [obras, setObras] = useState([]);
@@ -99,15 +118,6 @@ const ListaHoras = () => {
   // Solo el admin puede cambiar la obra/partida a la que se adjudican unas horas ya registradas
   const puedeCambiarAdjudicacion = usuario?.rol === 'admin';
   const [editLoading, setEditLoading] = useState(false);
-
-  // Función auxiliar para convertir hora a minutos para ordenación
-  const convertirHoraAMinutos = (horaStr) => {
-    if (!horaStr || typeof horaStr !== 'string' || !horaStr.includes(':')) {
-      return Number.MAX_SAFE_INTEGER; // Para que registros sin hora_inicio válida queden al final en ordenación secundaria
-    }
-    const [horas, minutos] = horaStr.split(':').map(Number);
-    return horas * 60 + minutos;
-  };
 
   const formatTimeHHMM = (timeStr) => {
     if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) {
@@ -177,17 +187,7 @@ const ListaHoras = () => {
         
         const data = await horasService.getHoras(params);
         // Ordenar datos: primero por fecha descendente, luego por hora_inicio ascendente
-        data.sort((a, b) => {
-          const fechaA = new Date(a.fecha);
-          const fechaB = new Date(b.fecha);
-          if (fechaA.getTime() !== fechaB.getTime()) {
-            return fechaB.getTime() - fechaA.getTime(); // Descendente por fecha
-          }
-          // Si las fechas son iguales, comparar por hora_inicio (ascendente)
-          const minutosA = convertirHoraAMinutos(a.hora_inicio);
-          const minutosB = convertirHoraAMinutos(b.hora_inicio);
-          return minutosA - minutosB;
-        });
+        data.sort(compararHoras);
         setHoras(data);
         setError('');
       } catch (err) {
@@ -429,10 +429,13 @@ const ListaHoras = () => {
       }
 
       // Actualizar la lista de horas en el estado local
+      // Reordenar tras la edición: si cambia la hora de inicio, el registro debe recolocarse dentro del día
       setHoras(prevHoras =>
-        prevHoras.map(hora =>
-          hora.id_movimiento === editingRecord.id_movimiento ? registroActualizadoParaUI : hora
-        )
+        prevHoras
+          .map(hora =>
+            hora.id_movimiento === editingRecord.id_movimiento ? registroActualizadoParaUI : hora
+          )
+          .sort(compararHoras)
       );
       
       handleCloseEditModal();

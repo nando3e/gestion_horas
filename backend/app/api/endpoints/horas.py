@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, nullslast
 from datetime import date, datetime, timedelta, time
 
 from app.db.database import get_db
@@ -78,7 +78,10 @@ async def read_horas(
         if fecha_fin:
             query = query.filter(Hora.fecha <= fecha_fin)
     
-    horas = query.order_by(Hora.fecha.desc()).offset(skip).limit(limit).all()
+    # Dentro de un mismo día, el intervalo más temprano va primero
+    horas = query.order_by(
+        Hora.fecha.desc(), nullslast(Hora.hora_inicio.asc())
+    ).offset(skip).limit(limit).all()
     return horas
 
 @router.get("/hoy", response_model=List[HoraSchema])
@@ -99,7 +102,7 @@ async def read_horas_hoy(
     if current_user.rol == "trabajador":
         query = query.filter(Hora.chat_id == current_user.chat_id)
     
-    horas = query.all()
+    horas = query.order_by(nullslast(Hora.hora_inicio.asc())).all()
     return horas
 
 @router.get("/mes", response_model=List[HoraSchema])
@@ -131,7 +134,7 @@ async def read_horas_mes(
     if current_user.rol == "trabajador":
         query = query.filter(Hora.chat_id == current_user.chat_id)
     
-    horas = query.order_by(Hora.fecha).all()
+    horas = query.order_by(Hora.fecha, nullslast(Hora.hora_inicio.asc())).all()
     return horas
 
 @router.get("/resumen-mensual", response_model=List[ResumenMensual])
