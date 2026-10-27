@@ -1,6 +1,7 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists, or_
 
 from app.db.database import get_db
 from app.models.trabajadores import Trabajador
@@ -18,13 +19,31 @@ router = APIRouter()
 async def read_trabajadores(
     skip: int = 0,
     limit: int = 100,
+    activo: Optional[bool] = Query(
+        None,
+        description="true: solo trabajadores activos; false: solo inactivos; sin valor: todos."
+    ),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_secretaria_user)
 ):
     """
     Obtener todos los trabajadores (requiere rol secretaria o admin)
+
+    El flag 'activo' vive en usuarios, no en trabajadores. Un trabajador se
+    considera activo si tiene algún usuario activo o si no tiene ningún
+    usuario desactivado (p. ej. trabajadores sin usuario de login).
     """
-    trabajadores = db.query(Trabajador).offset(skip).limit(limit).all()
+    query = db.query(Trabajador)
+    if activo is not None:
+        tiene_usuario_activo = exists().where(
+            and_(Usuario.chat_id == Trabajador.chat_id, Usuario.activo == True)
+        )
+        tiene_usuario_inactivo = exists().where(
+            and_(Usuario.chat_id == Trabajador.chat_id, Usuario.activo == False)
+        )
+        es_activo = or_(tiene_usuario_activo, ~tiene_usuario_inactivo)
+        query = query.filter(es_activo if activo else ~es_activo)
+    trabajadores = query.order_by(Trabajador.nombre).offset(skip).limit(limit).all()
     return trabajadores
 
 @router.get("/{chat_id}", response_model=TrabajadorSchema)

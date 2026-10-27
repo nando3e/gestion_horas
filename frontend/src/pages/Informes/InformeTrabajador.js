@@ -73,7 +73,8 @@ const InformeTrabajador = () => {
 
   const loadTrabajadores = async () => {
     try {
-      const response = await trabajadoresService.getTrabajadores();
+      // Solo trabajadores activos (el flag activo vive en el usuario)
+      const response = await trabajadoresService.getTrabajadoresActivos();
       setTrabajadores(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('Error al cargar trabajadores:', error);

@@ -211,7 +211,8 @@ const RegistrarHoras = () =>
 
     if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
       try {
-        const trabajadoresData = await trabajadoresService.getTrabajadores();
+        // Solo trabajadores activos (el flag activo vive en el usuario)
+        const trabajadoresData = await trabajadoresService.getTrabajadoresActivos();
         setTrabajadores(trabajadoresData);
       } catch (error) {
         console.error("Error al cargar trabajadores:", error);

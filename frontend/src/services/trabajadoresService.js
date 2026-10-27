@@ -1,9 +1,15 @@
 import api from './api';
 
 const trabajadoresService = {
-  // Obtener todos los trabajadores
-  getTrabajadores: async () => {
-    const response = await api.get('/trabajadores');
+  // Obtener trabajadores. params admite { activo: true | false }
+  getTrabajadores: async (params = {}) => {
+    const response = await api.get('/trabajadores', { params });
+    return response.data;
+  },
+
+  // Solo trabajadores activos (sin usuario desactivado): para desplegables de horas e informes
+  getTrabajadoresActivos: async () => {
+    const response = await api.get('/trabajadores', { params: { activo: true } });
     return response.data;
   },
   
