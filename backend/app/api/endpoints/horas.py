@@ -24,6 +24,27 @@ from sqlalchemy.exc import IntegrityError # Import for commit error handling
 
 router = APIRouter()
 
+
+def validar_obra_para_registro(db: Session, id_obra: Optional[int], current_user: Usuario, prefijo: str = "") -> None:
+    """
+    Comprueba que la obra existe y, si el usuario es trabajador, que está activa.
+    Un trabajador solo puede fichar contra obras en estado 'activa'; las
+    completadas o canceladas quedan reservadas a admin/secretaria.
+    """
+    if id_obra is None:
+        return
+    obra = db.query(Obra).filter(Obra.id_obra == id_obra).first()
+    if not obra:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{prefijo}Obra con id {id_obra} no encontrada."
+        )
+    if current_user.rol == "trabajador" and (obra.estado or "activa").lower() != "activa":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{prefijo}La obra '{obra.nombre_obra}' está {obra.estado}; solo se pueden registrar horas en obras activas."
+        )
+
 @router.get("", response_model=List[HoraSchema])
 async def read_horas(
     skip: int = 0,
@@ -288,6 +309,9 @@ async def create_horas_lote(
         elif current_user.rol not in ["secretaria", "admin"]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Tramo {idx}: Rol no autorizado.")
 
+        # La obra debe existir y, para trabajadores, estar activa
+        validar_obra_para_registro(db, tramo.id_obra, current_user, prefijo=f"Tramo {idx}: ")
+
         # OBTENER NOMBRE_TRABAJADOR Y NOMBRE_PARTIDA
         trabajador_obj = db.query(Trabajador).filter(Trabajador.chat_id == tramo.chat_id).first()
         if not trabajador_obj:
@@ -401,6 +425,9 @@ async def create_hora(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para crear registros para otros trabajadores"
         )
+
+    # La obra debe existir y, para trabajadores, estar activa
+    validar_obra_para_registro(db, hora.id_obra, current_user)
 
     # Determinar hora_inicio_obj y hora_fin_obj (tipo time)
     hora_inicio_obj: Optional[time] = None
