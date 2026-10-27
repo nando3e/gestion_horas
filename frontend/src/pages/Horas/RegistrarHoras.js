@@ -252,7 +252,8 @@ const RegistrarHoras = () =>
     }
 
     try {
-      const obrasData = await obrasService.getObras();
+      // Solo se puede fichar contra obras activas (no completadas ni canceladas)
+      const obrasData = await obrasService.getObrasActivas();
       setObras(obrasData);
     } catch (error) {
       console.error("Error al cargar obras:", error);

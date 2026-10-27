@@ -7,6 +7,7 @@ import logging
 from sqlalchemy.orm import Session
 import os
 from pathlib import Path
+from sqlalchemy import text
 
 from app.api import api_router
 from app.core.environment import API_V1_STR
@@ -42,6 +43,13 @@ app.include_router(api_router, prefix=API_V1_STR)
 async def startup_event():
     # Crear tablas si no existen
     Base.metadata.create_all(bind=engine)
+
+    # create_all no altera tablas existentes: aplicar aquí los ALTER idempotentes
+    # para columnas añadidas después del despliegue inicial.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE obras ADD COLUMN IF NOT EXISTS estado citext NOT NULL DEFAULT 'activa'"
+        ))
     
     # Comprobar si existe un superadmin
     db = next(get_db())

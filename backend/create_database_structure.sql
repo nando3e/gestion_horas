@@ -80,8 +80,14 @@ CREATE TABLE IF NOT EXISTS usuarios (
 CREATE TABLE IF NOT EXISTS obras (
     id_obra integer NOT NULL DEFAULT nextval('obras_id_obra_seq'::regclass) PRIMARY KEY,
     nombre_obra citext NOT NULL,
-    direccion_obra citext
+    direccion_obra citext,
+    estado citext NOT NULL DEFAULT 'activa'
+        CONSTRAINT ck_obras_estado CHECK (estado IN ('activa', 'completada', 'cancelada'))
 );
+
+-- Si la tabla ya existía sin la columna estado (BD desplegadas antes de v5):
+-- (main.py también lo ejecuta en el arranque de forma idempotente)
+ALTER TABLE obras ADD COLUMN IF NOT EXISTS estado citext NOT NULL DEFAULT 'activa';
 
 -- Tabla: partidas
 -- Almacena las partidas/tareas de cada obra

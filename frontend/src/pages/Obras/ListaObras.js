@@ -24,7 +24,8 @@ import {
   DialogActions,
   TextField,
   Tooltip,
-  Chip
+  Chip,
+  MenuItem
 } from '@mui/material';
 import { 
   FaPlus, 
@@ -33,6 +34,15 @@ import {
   FaBuilding,
   FaSearch
 } from 'react-icons/fa';
+
+const ESTADOS_OBRA = [
+  { value: 'activa', label: 'Activa', plural: 'Activas', color: 'primary' },
+  { value: 'completada', label: 'Completada', plural: 'Completadas', color: 'success' },
+  { value: 'cancelada', label: 'Cancelada', plural: 'Canceladas', color: 'error' }
+];
+
+const getEstadoInfo = (estado) =>
+  ESTADOS_OBRA.find(e => e.value === (estado || 'activa').toLowerCase()) || ESTADOS_OBRA[0];
 
 const ListaObras = () => {
   const [obras, setObras] = useState([]);
@@ -45,6 +55,9 @@ const ListaObras = () => {
   
   // Estado para la búsqueda
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Filtro por estado de la obra ('' = todas)
+  const [filtroEstado, setFiltroEstado] = useState('activa');
   
   // Estado para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -54,7 +67,8 @@ const ListaObras = () => {
   // Estado para formulario
   const [formData, setFormData] = useState({
     nombre_obra: '',
-    direccion_obra: ''
+    direccion_obra: '',
+    estado: 'activa'
   });
 
   // Cargar datos iniciales
@@ -94,11 +108,20 @@ const ListaObras = () => {
     setPage(0); // Resetear a la primera página
   };
   
-  // Filtrar obras por término de búsqueda
-  const filteredObras = obras.filter(obra => 
-    (obra.nombre_obra ? obra.nombre_obra.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
-    (obra.direccion_obra ? obra.direccion_obra.toLowerCase().includes(searchTerm.toLowerCase()) : false)
-  );
+  // Manejar cambio del filtro de estado
+  const handleFiltroEstadoChange = (event) => {
+    setFiltroEstado(event.target.value);
+    setPage(0);
+  };
+
+  // Filtrar obras por término de búsqueda y estado
+  const filteredObras = obras.filter(obra => {
+    const matchesSearch =
+      (obra.nombre_obra ? obra.nombre_obra.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
+      (obra.direccion_obra ? obra.direccion_obra.toLowerCase().includes(searchTerm.toLowerCase()) : false);
+    const matchesEstado = filtroEstado === '' || getEstadoInfo(obra.estado).value === filtroEstado;
+    return matchesSearch && matchesEstado;
+  });
   
   // Cambios en el formulario
   const handleFormChange = (e) => {
@@ -113,7 +136,8 @@ const ListaObras = () => {
   const handleOpenNewDialog = () => {
     setFormData({
       nombre_obra: '',
-      direccion_obra: ''
+      direccion_obra: '',
+      estado: 'activa'
     });
     setDialogOpen(true);
     setSelectedObra(null);
@@ -123,7 +147,8 @@ const ListaObras = () => {
   const handleOpenEditDialog = (obra) => {
     setFormData({
       nombre_obra: obra.nombre_obra,
-      direccion_obra: obra.direccion_obra || ''
+      direccion_obra: obra.direccion_obra || '',
+      estado: getEstadoInfo(obra.estado).value
     });
     setSelectedObra(obra);
     setDialogOpen(true);
@@ -220,17 +245,32 @@ const ListaObras = () => {
 
         {/* Búsqueda */}
         <Paper elevation={2} className="p-4 mb-6">
-          <Box className="flex items-center">
-            <FaSearch className="text-gray-400 mr-2" />
+          <Box className="flex flex-col md:flex-row items-stretch md:items-center gap-4">
+            <Box className="flex items-center flex-1">
+              <FaSearch className="text-gray-400 mr-2" />
+              <TextField
+                label="Buscar obras"
+                variant="outlined"
+                fullWidth
+                size="small"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                placeholder="Buscar por nombre o descripción..."
+              />
+            </Box>
             <TextField
-              label="Buscar obras"
-              variant="outlined"
-              fullWidth
+              select
+              label="Estado"
               size="small"
-              value={searchTerm}
-              onChange={handleSearchChange}
-              placeholder="Buscar por nombre o descripción..."
-            />
+              value={filtroEstado}
+              onChange={handleFiltroEstadoChange}
+              className="w-full md:w-48"
+            >
+              <MenuItem value="">Todas</MenuItem>
+              {ESTADOS_OBRA.map(e => (
+                <MenuItem key={e.value} value={e.value}>{e.plural}</MenuItem>
+              ))}
+            </TextField>
           </Box>
         </Paper>
 
@@ -266,8 +306,8 @@ const ListaObras = () => {
                           <TableCell>{obra.direccion_obra || '—'}</TableCell>
                           <TableCell>
                             <Chip 
-                              label={obra.estado || 'Activa'} 
-                              color={obra.estado === 'completada' ? 'success' : obra.estado === 'cancelada' ? 'error' : 'primary'}
+                              label={getEstadoInfo(obra.estado).label}
+                              color={getEstadoInfo(obra.estado).color}
                               size="small"
                             />
                           </TableCell>
@@ -312,11 +352,11 @@ const ListaObras = () => {
           ) : (
             <Box className="p-10 text-center">
               <Typography variant="h6" className="text-gray-500 mb-4">
-                {searchTerm 
-                  ? 'No se encontraron obras que coincidan con la búsqueda'
+                {searchTerm || filtroEstado
+                  ? 'No se encontraron obras que coincidan con los filtros'
                   : 'No hay obras registradas'}
               </Typography>
-              {!searchTerm && (
+              {!searchTerm && !filtroEstado && (
                 <Button
                   variant="contained"
                   color="primary"
@@ -326,13 +366,13 @@ const ListaObras = () => {
                   Crear Primera Obra
                 </Button>
               )}
-              {searchTerm && (
+              {(searchTerm || filtroEstado) && (
                 <Button
                   variant="outlined"
                   color="primary"
-                  onClick={() => setSearchTerm('')}
+                  onClick={() => { setSearchTerm(''); setFiltroEstado(''); }}
                 >
-                  Limpiar Búsqueda
+                  Limpiar Filtros
                 </Button>
               )}
             </Box>
@@ -382,9 +422,9 @@ const ListaObras = () => {
                 native: true,
               }}
             >
-              <option value="activa">Activa</option>
-              <option value="completada">Completada</option>
-              <option value="cancelada">Cancelada</option>
+              {ESTADOS_OBRA.map(e => (
+                <option key={e.value} value={e.value}>{e.label}</option>
+              ))}
             </TextField>
           </Box>
         </DialogContent>

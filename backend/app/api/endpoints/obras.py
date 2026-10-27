@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,7 +8,8 @@ from app.schemas.obras import (
     Obra as ObraSchema,
     ObraCreate,
     ObraUpdate,
-    ObraWithPartidas
+    ObraWithPartidas,
+    ESTADOS_OBRA
 )
 from app.core.permissions import get_current_secretaria_user, get_current_trabajador_user
 from app.models.usuarios import Usuario
@@ -19,13 +20,26 @@ router = APIRouter()
 async def read_obras(
     skip: int = 0,
     limit: int = 100,
+    estado: Optional[str] = Query(
+        None,
+        description="Filtrar por estado: activa, completada o cancelada. Sin valor devuelve todas."
+    ),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_trabajador_user)
 ):
     """
-    Obtener todas las obras
+    Obtener todas las obras, opcionalmente filtradas por estado
     """
-    obras = db.query(Obra).offset(skip).limit(limit).all()
+    query = db.query(Obra)
+    if estado:
+        estado = estado.lower()
+        if estado not in ESTADOS_OBRA:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Estado no válido. Valores permitidos: {', '.join(ESTADOS_OBRA)}"
+            )
+        query = query.filter(Obra.estado == estado)
+    obras = query.order_by(Obra.nombre_obra).offset(skip).limit(limit).all()
     return obras
 
 @router.get("/activas", response_model=List[ObraSchema])
@@ -36,13 +50,14 @@ async def read_obras_activas(
     current_user: Usuario = Depends(get_current_trabajador_user)
 ):
     """
-    Obtener obras con partidas activas (no acabadas)
+    Obtener obras en estado 'activa' que además tienen partidas activas (no acabadas)
     """
-    # Consulta para obtener obras que tienen al menos una partida activa
+    # Consulta para obtener obras activas que tienen al menos una partida activa
     from app.models.partidas import Partida
     from sqlalchemy import and_, exists
     
     obras = db.query(Obra).filter(
+        Obra.estado == "activa",
         exists().where(
             and_(
                 Partida.id_obra == Obra.id_obra,

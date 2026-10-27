@@ -1,9 +1,15 @@
 import api from './api';
 
 const obrasService = {
-  // Obtener todas las obras
-  getObras: async () => {
-    const response = await api.get('/obras');
+  // Obtener obras. params admite { estado: 'activa' | 'completada' | 'cancelada' }
+  getObras: async (params = {}) => {
+    const response = await api.get('/obras', { params });
+    return response.data;
+  },
+
+  // Obtener solo las obras activas (las que se ofrecen a los trabajadores al fichar)
+  getObrasActivas: async () => {
+    const response = await api.get('/obras', { params: { estado: 'activa' } });
     return response.data;
   },
   

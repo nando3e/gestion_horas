@@ -10,6 +10,9 @@ class Obra(Base):
     id_obra = Column(Integer, primary_key=True, index=True)
     nombre_obra = Column(CITEXT, nullable=False)
     direccion_obra = Column(CITEXT, nullable=True)
+    # Estado de la obra: 'activa', 'completada' o 'cancelada'.
+    # Solo las obras activas se ofrecen a los trabajadores al fichar.
+    estado = Column(CITEXT, nullable=False, server_default="activa", default="activa")
     
     # Relaciones
     partidas = relationship("Partida", back_populates="obra") 

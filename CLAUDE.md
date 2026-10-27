@@ -77,7 +77,7 @@ En el frontend, `isAdmin()` de `AuthContext` devuelve true para **admin y secret
 
 ### Sin migraciones
 
-`alembic` está en `requirements.txt` pero **no hay configuración ni versiones**. El esquema se crea con `Base.metadata.create_all()` en el evento de arranque de `main.py`. `create_all` no altera tablas existentes: **añadir una columna a un modelo no la crea en una BD ya desplegada**. Para cambios de esquema en producción hay que aplicar el DDL a mano y reflejarlo en `backend/create_database_structure.sql`.
+`alembic` está en `requirements.txt` pero **no hay configuración ni versiones**. El esquema se crea con `Base.metadata.create_all()` en el evento de arranque de `main.py`. `create_all` no altera tablas existentes: **añadir una columna a un modelo no la crea en una BD ya desplegada**. Para cambios de esquema en producción hay que aplicar el DDL a mano y reflejarlo en `backend/create_database_structure.sql`. Desde `v5`, el `startup_event` de `main.py` ejecuta además un bloque de `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` idempotentes (hoy: `obras.estado`); si añades una columna, añade ahí su `ALTER` y también al `.sql`.
 
 El arranque también autocrea un admin si no existe ninguno, leyendo `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_CHAT_ID` / `ADMIN_NOMBRE` del entorno.
 
