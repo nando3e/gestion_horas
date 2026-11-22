@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout/Layout';
 import horasService from '../../services/horasService';
@@ -222,6 +222,26 @@ const InformeObra = () => {
     setOrdenFecha(ordenFecha === 'asc' ? 'desc' : 'asc');
   };
 
+  // Total de horas por partida de la obra (se agrupa por id para no mezclar partidas homónimas)
+  const resumenPartidas = useMemo(() => {
+    const porPartida = {};
+    horas.forEach(hora => {
+      const clave = hora.id_partida ?? 'sin-partida';
+      if (!porPartida[clave]) {
+        porPartida[clave] = {
+          nombre: hora.nombre_partida || 'Sin partida',
+          horas: 0,
+          registros: 0
+        };
+      }
+      porPartida[clave].horas += parseFloat(hora.horas_totales) || 0;
+      porPartida[clave].registros += 1;
+    });
+    return Object.entries(porPartida)
+      .map(([clave, datos]) => ({ clave, ...datos }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
+  }, [horas]);
+
   return (
     <Layout>
       <Box sx={{ p: 3 }}>
@@ -365,6 +385,44 @@ const InformeObra = () => {
               </Box>
             </Box>
 
+            {/* Resumen por partida */}
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              <strong>Resumen por partida</strong>
+            </Typography>
+            <TableContainer sx={{ mb: 4 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Partida</strong></TableCell>
+                    <TableCell align="right"><strong>Horas</strong></TableCell>
+                    <TableCell align="right"><strong>% del total</strong></TableCell>
+                    <TableCell align="center"><strong>Registros</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {resumenPartidas.map(partida => (
+                    <TableRow key={partida.clave}>
+                      <TableCell>{partida.nombre}</TableCell>
+                      <TableCell align="right">{partida.horas.toFixed(2)}h</TableCell>
+                      <TableCell align="right">
+                        {totalHoras > 0 ? `${((partida.horas / totalHoras) * 100).toFixed(1)}%` : '-'}
+                      </TableCell>
+                      <TableCell align="center">{partida.registros}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell><strong>Total obra</strong></TableCell>
+                    <TableCell align="right"><strong>{totalHoras.toFixed(2)}h</strong></TableCell>
+                    <TableCell align="right"><strong>100%</strong></TableCell>
+                    <TableCell align="center"><strong>{horas.length}</strong></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              <strong>Detalle por fecha</strong>
+            </Typography>
             <TableContainer>
               <Table>
                 <TableHead>
