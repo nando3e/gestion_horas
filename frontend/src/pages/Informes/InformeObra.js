@@ -52,6 +52,7 @@ const InformeObra = () => {
   // Datos agrupados
   const [datosAgrupados, setDatosAgrupados] = useState({});
   const [totalHoras, setTotalHoras] = useState(0);
+  const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(''); // '' = todos
   const [ordenFecha, setOrdenFecha] = useState('desc'); // 'asc' o 'desc'
 
   const meses = [
@@ -102,7 +103,9 @@ const InformeObra = () => {
     
     try {
       const filtros = {
-        id_obra: obraSeleccionada
+        id_obra: obraSeleccionada,
+        // La API corta en 1000 registros por defecto y el informe sumaría de menos
+        limit: 100000
       };
       
       // "Todos" deja el array vacío: solo se acota por fechas lo que el usuario haya concretado
@@ -118,9 +121,6 @@ const InformeObra = () => {
         
         filtros.fecha_inicio = format(fechaInicio, 'yyyy-MM-dd');
         filtros.fecha_fin = format(fechaFin, 'yyyy-MM-dd');
-      } else {
-        // Sin filtro de fechas hay que subir el límite por defecto de la API (1000 registros)
-        filtros.limit = 100000;
       }
       
       const response = await horasService.getHoras(filtros);
@@ -132,6 +132,7 @@ const InformeObra = () => {
       }
       
       setHoras(horasData);
+      setTrabajadorSeleccionado('');
       procesarDatos(horasData);
       
     } catch (error) {
@@ -180,6 +181,14 @@ const InformeObra = () => {
     loadHoras();
   };
 
+  // Identificador del trabajador de un registro (los registros sin chat_id conservan el nombre)
+  const claveTrabajador = (hora) => hora.chat_id || hora.nombre_trabajador || 'sin-trabajador';
+
+  const handleTrabajadorChange = (clave) => {
+    setTrabajadorSeleccionado(clave);
+    procesarDatos(clave ? horas.filter(hora => claveTrabajador(hora) === clave) : horas);
+  };
+
   const limpiarFiltros = () => {
     setObraSeleccionada('');
     setAñosSeleccionados([]);
@@ -187,6 +196,7 @@ const InformeObra = () => {
     setHoras([]);
     setDatosAgrupados({});
     setTotalHoras(0);
+    setTrabajadorSeleccionado('');
     setError('');
   };
 
@@ -222,10 +232,29 @@ const InformeObra = () => {
     setOrdenFecha(ordenFecha === 'asc' ? 'desc' : 'asc');
   };
 
-  // Total de horas por partida de la obra (se agrupa por id para no mezclar partidas homónimas)
+  // Trabajadores con horas en el informe: salen de los propios registros, no de la lista de
+  // activos, para que los que ya no están sigan contando y se puedan consultar
+  const trabajadoresInforme = useMemo(() => {
+    const porClave = {};
+    horas.forEach(hora => {
+      porClave[claveTrabajador(hora)] = hora.nombre_trabajador || hora.chat_id || 'Sin trabajador';
+    });
+    return Object.entries(porClave)
+      .map(([clave, nombre]) => ({ clave, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [horas]);
+
+  const horasVisibles = useMemo(
+    () => (trabajadorSeleccionado
+      ? horas.filter(hora => claveTrabajador(hora) === trabajadorSeleccionado)
+      : horas),
+    [horas, trabajadorSeleccionado]
+  );
+
+  // Total de horas por partida (se agrupa por id para no mezclar partidas homónimas)
   const resumenPartidas = useMemo(() => {
     const porPartida = {};
-    horas.forEach(hora => {
+    horasVisibles.forEach(hora => {
       const clave = hora.id_partida ?? 'sin-partida';
       if (!porPartida[clave]) {
         porPartida[clave] = {
@@ -240,7 +269,7 @@ const InformeObra = () => {
     return Object.entries(porPartida)
       .map(([clave, datos]) => ({ clave, ...datos }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
-  }, [horas]);
+  }, [horasVisibles]);
 
   return (
     <Layout>
@@ -370,6 +399,22 @@ const InformeObra = () => {
                 Informe de: {obtenerNombreObra()}
               </Typography>
               <Box display="flex" alignItems="center" gap={2}>
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel id="filtro-trabajador-label" shrink>Trabajador</InputLabel>
+                  <Select
+                    labelId="filtro-trabajador-label"
+                    value={trabajadorSeleccionado}
+                    label="Trabajador"
+                    displayEmpty
+                    notched
+                    onChange={(e) => handleTrabajadorChange(e.target.value)}
+                  >
+                    <MenuItem value="">Todos los trabajadores</MenuItem>
+                    {trabajadoresInforme.map(({ clave, nombre }) => (
+                      <MenuItem key={clave} value={clave}>{nombre}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 <Chip 
                   label={`Total: ${totalHoras.toFixed(2)} horas`} 
                   color="primary" 
@@ -411,10 +456,10 @@ const InformeObra = () => {
                     </TableRow>
                   ))}
                   <TableRow>
-                    <TableCell><strong>Total obra</strong></TableCell>
+                    <TableCell><strong>Total</strong></TableCell>
                     <TableCell align="right"><strong>{totalHoras.toFixed(2)}h</strong></TableCell>
                     <TableCell align="right"><strong>100%</strong></TableCell>
-                    <TableCell align="center"><strong>{horas.length}</strong></TableCell>
+                    <TableCell align="center"><strong>{horasVisibles.length}</strong></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

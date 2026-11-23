@@ -10,6 +10,12 @@ server {
         try_files $uri =404;
     }
 
+    # index.html siempre se revalida: si se queda en caché, el navegador sigue
+    # cargando el bundle de la versión anterior tras un despliegue
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
     # Proxy para la API - Usa variables de entorno
     location /api/ {
         proxy_pass http://${API_SERVICE_NAME}:${API_PORT};

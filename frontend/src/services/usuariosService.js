@@ -41,7 +41,7 @@ const usuariosService = {
   
   // Activar/desactivar un usuario
   toggleActivoUsuario: async (id, activo) => {
-    const response = await api.patch(`/usuarios/${id}`, { activo });
+    const response = await api.put(`/usuarios/${id}`, { activo });
     return response.data;
   },
   
