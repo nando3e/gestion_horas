@@ -211,7 +211,7 @@ const RegistrarHoras = () =>
 
     if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
       try {
-        // Solo trabajadores activos (el flag activo vive en el usuario)
+        // Solo trabajadores activos (ni ocultos ni con el usuario desactivado)
         const trabajadoresData = await trabajadoresService.getTrabajadoresActivos();
         setTrabajadores(trabajadoresData);
       } catch (error) {

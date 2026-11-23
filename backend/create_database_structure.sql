@@ -60,8 +60,12 @@ CREATE SEQUENCE IF NOT EXISTS notificaciones_id_seq
 -- Almacena información de los trabajadores
 CREATE TABLE IF NOT EXISTS trabajadores (
     chat_id citext NOT NULL PRIMARY KEY,
-    nombre citext NOT NULL
+    nombre citext NOT NULL,
+    activo boolean NOT NULL DEFAULT true
 );
+
+-- Si la tabla ya existía sin la columna activo (BD desplegadas antes de v11):
+ALTER TABLE trabajadores ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true;
 
 -- Tabla: usuarios
 -- Almacena usuarios del sistema con autenticación

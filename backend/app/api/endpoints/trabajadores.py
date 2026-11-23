@@ -1,9 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import and_, exists, or_
 
 from app.db.database import get_db
+from app.models.horas import Hora
 from app.models.trabajadores import Trabajador
 from app.schemas.trabajadores import (
     Trabajador as TrabajadorSchema,
@@ -29,11 +30,11 @@ async def read_trabajadores(
     """
     Obtener todos los trabajadores (requiere rol secretaria o admin)
 
-    El flag 'activo' vive en usuarios, no en trabajadores. Un trabajador se
-    considera activo si tiene algún usuario activo o si no tiene ningún
-    usuario desactivado (p. ej. trabajadores sin usuario de login).
+    Un trabajador se considera activo si no está oculto (trabajadores.activo)
+    y además tiene algún usuario activo o ningún usuario desactivado (p. ej.
+    trabajadores sin usuario de login).
     """
-    query = db.query(Trabajador)
+    query = db.query(Trabajador).options(selectinload(Trabajador.usuario))
     if activo is not None:
         tiene_usuario_activo = exists().where(
             and_(Usuario.chat_id == Trabajador.chat_id, Usuario.activo == True)
@@ -41,7 +42,10 @@ async def read_trabajadores(
         tiene_usuario_inactivo = exists().where(
             and_(Usuario.chat_id == Trabajador.chat_id, Usuario.activo == False)
         )
-        es_activo = or_(tiene_usuario_activo, ~tiene_usuario_inactivo)
+        es_activo = and_(
+            Trabajador.activo == True,
+            or_(tiene_usuario_activo, ~tiene_usuario_inactivo)
+        )
         query = query.filter(es_activo if activo else ~es_activo)
     trabajadores = query.order_by(Trabajador.nombre).offset(skip).limit(limit).all()
     return trabajadores
@@ -132,6 +136,9 @@ async def delete_trabajador(
 ):
     """
     Eliminar un trabajador (requiere rol secretaria o admin)
+
+    No se permite si tiene horas registradas: al borrarlo quedarían sin chat_id
+    y los listados e informes que las incluyen darían error. Hay que ocultarlo.
     """
     # Buscar el trabajador
     db_trabajador = db.query(Trabajador).filter(Trabajador.chat_id == chat_id).first()
@@ -141,6 +148,12 @@ async def delete_trabajador(
             detail="Trabajador no encontrado"
         )
     
+    if db.query(Hora.id_movimiento).filter(Hora.chat_id == chat_id).first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{db_trabajador.nombre}' tiene horas registradas y no se puede eliminar. Ocúltalo para que deje de salir en los desplegables."
+        )
+
     # Eliminar el trabajador
     db.delete(db_trabajador)
     db.commit()

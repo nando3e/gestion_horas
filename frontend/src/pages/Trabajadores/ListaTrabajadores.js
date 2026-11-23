@@ -22,7 +22,10 @@ import {
   DialogContentText,
   DialogActions,
   TextField,
-  Tooltip
+  Tooltip,
+  Chip,
+  Checkbox,
+  FormControlLabel
 } from '@mui/material';
 import { 
   FaPlus, 
@@ -30,7 +33,9 @@ import {
   FaTrash, 
   FaUser,
   FaSearch,
-  FaFilter
+  FaFilter,
+  FaEye,
+  FaEyeSlash
 } from 'react-icons/fa';
 
 const ListaTrabajadores = () => {
@@ -44,6 +49,7 @@ const ListaTrabajadores = () => {
   
   // Estado para la búsqueda
   const [searchTerm, setSearchTerm] = useState('');
+  const [verOcultos, setVerOcultos] = useState(false);
   
   // Estado para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -98,8 +104,12 @@ const ListaTrabajadores = () => {
     setPage(0);
   };
   
+  // Oculto en los desplegables: ocultado a mano o con el usuario de la app desactivado
+  const estaOculto = (trabajador) => !trabajador.activo || trabajador.usuario_desactivado;
+
   // Filtrar trabajadores según criterios - SIMPLIFICADO para solo buscar por nombre
   const filteredTrabajadores = trabajadores.filter(trabajador => {
+    if (!verOcultos && estaOculto(trabajador)) return false;
     // Filtro por texto de búsqueda en nombre o chat_id
     return (
       (trabajador.nombre ? trabajador.nombre.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
@@ -107,6 +117,21 @@ const ListaTrabajadores = () => {
     );
   });
   
+  // Al ocultar o borrar puede quedarse vacía la última página
+  const paginaActual = Math.min(page, Math.max(0, Math.ceil(filteredTrabajadores.length / rowsPerPage) - 1));
+
+  // Ocultar o volver a mostrar un trabajador (sus horas no se tocan)
+  const handleToggleOculto = async (trabajador) => {
+    try {
+      const result = await trabajadoresService.setActivoTrabajador(trabajador.chat_id, !trabajador.activo);
+      setTrabajadores(trabajadores.map(t => (t.chat_id === result.chat_id ? result : t)));
+      setError('');
+    } catch (err) {
+      console.error('Error al cambiar la visibilidad del trabajador:', err);
+      setError(err.response?.data?.detail || 'No se pudo cambiar la visibilidad del trabajador');
+    }
+  };
+
   // Cambios en el formulario
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -245,6 +270,16 @@ const ListaTrabajadores = () => {
               </Box>
             </Box>
             
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={verOcultos}
+                  onChange={(e) => { setVerOcultos(e.target.checked); setPage(0); }}
+                />
+              }
+              label={`Ver ocultos (${trabajadores.filter(estaOculto).length})`}
+            />
+
             <Button
               variant="outlined"
               color="primary"
@@ -271,12 +306,13 @@ const ListaTrabajadores = () => {
                     <TableRow>
                       <TableCell className="font-bold">ID</TableCell>
                       <TableCell className="font-bold">Nombre</TableCell>
+                      <TableCell className="font-bold">Estado</TableCell>
                       <TableCell className="font-bold">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredTrabajadores
-                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                      .slice(paginaActual * rowsPerPage, paginaActual * rowsPerPage + rowsPerPage)
                       .map((trabajador) => (
                         <TableRow key={trabajador.chat_id} hover>
                           <TableCell>{trabajador.chat_id}</TableCell>
@@ -287,7 +323,31 @@ const ListaTrabajadores = () => {
                             </Box>
                           </TableCell>
                           <TableCell>
+                            <Chip
+                              label={!trabajador.activo ? 'Oculto' : trabajador.usuario_desactivado ? 'Usuario desactivado' : 'Activo'}
+                              color={estaOculto(trabajador) ? 'default' : 'success'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
                             <Box className="flex gap-1">
+                              <Tooltip title={
+                                !trabajador.activo
+                                  ? 'Mostrar trabajador'
+                                  : trabajador.usuario_desactivado
+                                    ? 'Su usuario está desactivado: reactívalo en Usuarios App'
+                                    : 'Ocultar trabajador (conserva sus horas)'
+                              }>
+                                <span>
+                                  <IconButton
+                                    onClick={() => handleToggleOculto(trabajador)}
+                                    disabled={trabajador.activo && trabajador.usuario_desactivado}
+                                    size="small"
+                                  >
+                                    {trabajador.activo ? <FaEyeSlash /> : <FaEye />}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
                               <Tooltip title="Editar trabajador">
                                 <IconButton 
                                   onClick={() => handleOpenEditDialog(trabajador)}
@@ -318,7 +378,7 @@ const ListaTrabajadores = () => {
                 component="div"
                 count={filteredTrabajadores.length}
                 rowsPerPage={rowsPerPage}
-                page={page}
+                page={paginaActual}
                 onPageChange={handleChangePage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
                 labelRowsPerPage="Filas por página"

@@ -50,6 +50,9 @@ async def startup_event():
         conn.execute(text(
             "ALTER TABLE obras ADD COLUMN IF NOT EXISTS estado citext NOT NULL DEFAULT 'activa'"
         ))
+        conn.execute(text(
+            "ALTER TABLE trabajadores ADD COLUMN IF NOT EXISTS activo boolean NOT NULL DEFAULT true"
+        ))
     
     # Comprobar si existe un superadmin
     db = next(get_db())

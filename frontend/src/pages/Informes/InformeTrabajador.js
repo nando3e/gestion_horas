@@ -73,7 +73,7 @@ const InformeTrabajador = () => {
 
   const loadTrabajadores = async () => {
     try {
-      // Solo trabajadores activos (el flag activo vive en el usuario)
+      // Solo trabajadores activos (ni ocultos ni con el usuario desactivado)
       const response = await trabajadoresService.getTrabajadoresActivos();
       setTrabajadores(Array.isArray(response) ? response : []);
     } catch (error) {

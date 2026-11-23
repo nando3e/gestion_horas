@@ -7,7 +7,7 @@ const trabajadoresService = {
     return response.data;
   },
 
-  // Solo trabajadores activos (sin usuario desactivado): para desplegables de horas e informes
+  // Solo trabajadores activos (ni ocultos ni con el usuario desactivado): para desplegables de horas e informes
   getTrabajadoresActivos: async () => {
     const response = await api.get('/trabajadores', { params: { activo: true } });
     return response.data;
@@ -31,6 +31,12 @@ const trabajadoresService = {
     return response.data;
   },
   
+  // Ocultar (activo = false) o volver a mostrar un trabajador
+  setActivoTrabajador: async (chat_id, activo) => {
+    const response = await api.put(`/trabajadores/${chat_id}`, { activo });
+    return response.data;
+  },
+
   // Eliminar un trabajador
   deleteTrabajador: async (chat_id) => {
     return await api.delete(`/trabajadores/${chat_id}`);

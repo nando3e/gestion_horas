@@ -209,7 +209,7 @@ const ListaHoras = () => {
         
         // Si es admin o secretaria, cargar trabajadores
         if (user && (user.rol === 'admin' || user.rol === 'secretaria')) {
-          // Solo trabajadores activos (el flag activo vive en el usuario)
+          // Solo trabajadores activos (ni ocultos ni con el usuario desactivado)
           const trabajadoresData = await trabajadoresService.getTrabajadoresActivos();
           setTrabajadores(trabajadoresData);
         }
